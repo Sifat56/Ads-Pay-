@@ -1,0 +1,79 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.role == 'ADMIN' || 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN');
+    }
+
+    // App Settings: readable by all authenticated users, writable ONLY by Admin
+    match /app_settings/{document} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Users collection
+    match /users/{userId} {
+      // User can read their own profile; Admins can read all profiles
+      allow read: if isOwner(userId) || isAdmin();
+      
+      // User can create their initial profile upon registration
+      allow create: if isOwner(userId) && request.resource.data.points == 5.0;
+      
+      // Points, role, and block status can ONLY be updated by Admin or Cloud Functions (admin SDK)
+      allow update: if isAdmin() || (
+        isOwner(userId) && 
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['points', 'totalEarned', 'role', 'isBlocked', 'isTaskDisabled', 'isWithdrawDisabled', 'isReferralDisabled'])
+      );
+      
+      allow delete: if isAdmin();
+    }
+
+    // Task attempts: written via Cloud Functions / server authority
+    match /task_attempts/{attemptId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    // Quizzes: read by authenticated users, modified ONLY by Admin
+    match /quizzes/{quizId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Transactions / Reward history: immutable user ledger
+    match /transactions/{transactionId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    // Withdrawals: Users can create withdrawal requests (validated by server rules)
+    match /withdrawals/{withdrawalId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // Admin Audit Logs: strictly admin read/write
+    match /audit_logs/{logId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Notifications
+    match /notifications/{notifId} {
+      allow read: if isAuthenticated() && (resource.data.targetUserId == 'ALL' || resource.data.targetUserId == request.auth.uid || isAdmin());
+      allow write: if isAdmin();
+    }
+  }
+}

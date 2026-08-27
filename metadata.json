@@ -1,0 +1,6 @@
+{
+  "name": "Ads Pay",
+  "description": "Complete Android earning application with Start.io ads, quiz task system, referral program, wallet withdrawals, and admin control panel.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
