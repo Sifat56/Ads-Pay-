@@ -3,6 +3,7 @@ import {
   SlidersHorizontal, 
   AlertTriangle, 
   CheckCircle2, 
+  AlertCircle,
   Save, 
   Smartphone, 
   Power, 

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   FileText, 
   Send, 
-  Youtube, 
+  Video, 
   Mail, 
   HelpCircle, 
   Save, 
@@ -124,7 +124,7 @@ export const ContentManagementView: React.FC<Props> = ({ settings, onSettingsUpd
 
             <div>
               <label className="block font-bold text-slate-300 mb-1 flex items-center gap-1.5">
-                <Youtube className="w-3.5 h-3.5 text-red-400" /> YouTube Official Channel
+                <Video className="w-3.5 h-3.5 text-red-400" /> YouTube Official Channel
               </label>
               <input
                 type="url"

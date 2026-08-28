@@ -22,7 +22,7 @@ class ApiClient {
     return this.token;
   }
 
-  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  private async request<T>(endpoint: string, options: RequestInit = {}, retries = 2): Promise<T> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(options.headers as Record<string, string> || {}),
@@ -32,23 +32,38 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${this.token}`;
     }
 
-    const response = await fetch(`${API_BASE}${endpoint}`, {
-      ...options,
-      headers,
-    });
+    try {
+      const response = await fetch(`${API_BASE}${endpoint}`, {
+        ...options,
+        headers,
+      });
 
-    if (response.status === 401) {
-      this.setToken(null);
-      window.dispatchEvent(new Event('admin:unauthorized'));
-      throw new Error('Session expired. Please log in again.');
+      if (response.status === 401) {
+        this.setToken(null);
+        window.dispatchEvent(new Event('admin:unauthorized'));
+        throw new Error('Session expired. Please log in again.');
+      }
+
+      let data: any;
+      try {
+        data = await response.json();
+      } catch {
+        data = {};
+      }
+
+      if (!response.ok) {
+        throw new Error(data?.error || `API request failed with status ${response.status}`);
+      }
+
+      return data as T;
+    } catch (err: any) {
+      // If network failure (e.g. Failed to fetch while server starts) and retries left, retry with backoff
+      if (retries > 0 && (err.name === 'TypeError' || err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError'))) {
+        await new Promise((resolve) => setTimeout(resolve, 400 * (3 - retries)));
+        return this.request<T>(endpoint, options, retries - 1);
+      }
+      throw err;
     }
-
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || 'API request failed');
-    }
-
-    return data as T;
   }
 
   // Auth

@@ -1,10 +1,10 @@
 package com.adspay.app.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -25,6 +26,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.adspay.app.data.NetworkUtils
 import com.adspay.app.data.models.User
 import com.adspay.app.data.repository.AdsPayRepository
 import com.adspay.app.ui.theme.*
@@ -33,21 +35,18 @@ import com.adspay.app.ui.theme.*
 fun AuthScreen(
     onAuthSuccess: (User) -> Unit
 ) {
+    val context = LocalContext.current
     var isSignUp by remember { mutableStateOf(false) }
-    var isPhoneLogin by remember { mutableStateOf(false) }
 
     var name by remember { mutableStateOf("") }
     var emailOrPhone by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var referralCode by remember { mutableStateOf("") }
-    var otpCode by remember { mutableStateOf("") }
-    var isOtpSent by remember { mutableStateOf(false) }
 
     var passwordVisible by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var successMessage by remember { mutableStateOf<String?>(null) }
-    var isLoading by remember { mutableStateOf(false) }
 
     val appSettings by AdsPayRepository.appSettings.collectAsState()
 
@@ -61,7 +60,7 @@ fun AuthScreen(
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
         ) {
-            // Purple Curved Header
+            // Dark & Emerald Curved Header
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -322,15 +321,21 @@ fun AuthScreen(
                         onClick = {
                             errorMessage = null
                             successMessage = null
+
+                            if (!NetworkUtils.isInternetAvailable(context)) {
+                                errorMessage = NetworkUtils.ERROR_NO_INTERNET
+                                return@Button
+                            }
+
                             if (isSignUp) {
-                                if (name.isBlank() || emailOrPhone.isBlank() || password.length < 6) {
+                                if (name.isBlank() || emailOrPhone.isBlank() || phone.isBlank() || password.length < 6) {
                                     errorMessage = "Please complete all fields (password min 6 chars)."
                                     return@Button
                                 }
                                 val res = AdsPayRepository.register(
                                     name = name,
                                     email = emailOrPhone,
-                                    phone = phone.ifBlank { "+8801800000000" },
+                                    phone = phone,
                                     password = password,
                                     referralCode = referralCode.ifBlank { null }
                                 )
@@ -359,51 +364,11 @@ fun AuthScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = PurplePrimary)
                     ) {
                         Text(
-                            text = if (isSignUp) "Create Account (+5 Pts Bonus)" else "Login to Ads Pay",
+                            text = if (isSignUp) "Create Account" else "Login to Ads Pay",
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp,
                             color = SurfaceWhite
                         )
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Quick Demo / Test Account Fast Logins
-                    Text(
-                        text = "Or quick login as test account:",
-                        fontSize = 11.sp,
-                        color = TextMuted,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = {
-                                val res = AdsPayRepository.login("sifat@example.com", "123456")
-                                res.onSuccess { onAuthSuccess(it) }
-                            },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Text("👤 User Demo", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = PurplePrimary)
-                        }
-
-                        OutlinedButton(
-                            onClick = {
-                                val res = AdsPayRepository.login("admin@adspay.app", "123456")
-                                res.onSuccess { onAuthSuccess(it) }
-                            },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Text("🛡️ Admin Demo", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = GoldAccent)
-                        }
                     }
                 }
             }

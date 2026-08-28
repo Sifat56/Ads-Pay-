@@ -2,6 +2,8 @@ package com.adspay.app.ads
 
 import android.app.Activity
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import com.startapp.sdk.adsbase.Ad
 import com.startapp.sdk.adsbase.StartAppAd
@@ -12,6 +14,7 @@ import com.startapp.sdk.adsbase.adlisteners.VideoListener
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.util.concurrent.atomic.AtomicBoolean
 
 enum class RewardedAdStatus {
     IDLE,
@@ -23,72 +26,42 @@ enum class RewardedAdStatus {
 }
 
 object StartIoAdManager {
-
     private const val TAG = "StartIoAdManager"
-
     const val APP_ID = "207226080"
 
-    private var initialized = false
+    private var isInitialized = false
     private var rewardedAd: StartAppAd? = null
+    private var isAdLoading = false
+    private var retryCount = 0
+    private const val MAX_RETRIES = 3
+    private val mainHandler = Handler(Looper.getMainLooper())
 
-    private val _rewardedAdStatus =
-        MutableStateFlow(RewardedAdStatus.IDLE)
+    private val _rewardedAdStatus = MutableStateFlow(RewardedAdStatus.IDLE)
+    val rewardedAdStatus: StateFlow<RewardedAdStatus> = _rewardedAdStatus.asStateFlow()
 
-    val rewardedAdStatus: StateFlow<RewardedAdStatus> =
-        _rewardedAdStatus.asStateFlow()
+    private val _adErrorMessage = MutableStateFlow<String?>(null)
+    val adErrorMessage: StateFlow<String?> = _adErrorMessage.asStateFlow()
 
-    private val _adErrorMessage =
-        MutableStateFlow<String?>(null)
-
-    val adErrorMessage: StateFlow<String?> =
-        _adErrorMessage.asStateFlow()
-
-    fun initialize(
-        context: Context,
-        isTestAdsEnabled: Boolean = true
-    ) {
-        if (initialized) return
-
+    fun initialize(context: Context, isTestAdsEnabled: Boolean = false) {
+        if (isInitialized) return
         try {
-            val appContext = context.applicationContext
-
-            StartAppSDK.init(
-                appContext,
-                APP_ID,
-                false
-            )
-
+            StartAppSDK.init(context.applicationContext, APP_ID, false)
             StartAppSDK.enableReturnAds(false)
-
-            // Development/testing only.
-            // Remove or set false before production.
+            StartAppAd.disableSplash()
             if (isTestAdsEnabled) {
                 StartAppSDK.setTestAdsEnabled(true)
             }
-
-            initialized = true
-
-            Log.d(
-                TAG,
-                "Start.io initialized. App ID=$APP_ID"
-            )
-
-            loadRewardedAd(appContext)
-
+            isInitialized = true
+            Log.d(TAG, "Start.io SDK initialized successfully with App ID: $APP_ID")
+            // Proactively warm-up preload the rewarded ad
+            loadRewardedAd(context.applicationContext)
         } catch (e: Exception) {
-
-            Log.e(
-                TAG,
-                "Start.io initialization failed",
-                e
-            )
-
-            _rewardedAdStatus.value =
-                RewardedAdStatus.FAILED
-
-            _adErrorMessage.value =
-                e.message ?: "Start.io initialization failed"
+            Log.e(TAG, "Error initializing Start.io SDK: ${e.message}", e)
         }
+    }
+
+    fun isAdReady(): Boolean {
+        return rewardedAd?.isReady == true
     }
 
     fun loadRewardedAd(
@@ -96,88 +69,65 @@ object StartIoAdManager {
         onLoaded: (() -> Unit)? = null,
         onFailed: ((String) -> Unit)? = null
     ) {
-
-        if (!initialized) {
+        if (!isInitialized) {
             initialize(context)
+        }
+
+        if (rewardedAd?.isReady == true) {
+            _rewardedAdStatus.value = RewardedAdStatus.READY
+            _adErrorMessage.value = null
+            onLoaded?.invoke()
             return
         }
 
-        if (_rewardedAdStatus.value ==
-            RewardedAdStatus.LOADING
-        ) {
+        if (isAdLoading) {
+            // Already loading in progress
             return
         }
 
         try {
-
-            _rewardedAdStatus.value =
-                RewardedAdStatus.LOADING
-
+            isAdLoading = true
+            _rewardedAdStatus.value = RewardedAdStatus.LOADING
             _adErrorMessage.value = null
 
-            val ad = StartAppAd(context)
+            val appContext = context.applicationContext
+            val startAppAd = StartAppAd(appContext)
+            rewardedAd = startAppAd
 
-            rewardedAd = ad
+            startAppAd.loadAd(StartAppAd.AdMode.REWARDED_VIDEO, object : AdEventListener {
+                override fun onReceiveAd(ad: Ad) {
+                    isAdLoading = false
+                    retryCount = 0
+                    Log.d(TAG, "Start.io Rewarded Video Ad cached and ready to display.")
+                    _rewardedAdStatus.value = RewardedAdStatus.READY
+                    _adErrorMessage.value = null
+                    onLoaded?.invoke()
+                }
 
-            ad.loadAd(
-                StartAppAd.AdMode.REWARDED_VIDEO,
-                object : AdEventListener {
+                override fun onFailedToReceiveAd(ad: Ad?) {
+                    isAdLoading = false
+                    val errorMsg = ad?.errorMessage ?: "Ad server response timeout or no fill."
+                    Log.w(TAG, "Start.io Rewarded Ad load failed (Attempt ${retryCount + 1}): $errorMsg")
+                    _rewardedAdStatus.value = RewardedAdStatus.FAILED
+                    _adErrorMessage.value = errorMsg
+                    onFailed?.invoke(errorMsg)
 
-                    override fun onReceiveAd(ad: Ad) {
-
-                        Log.d(
-                            TAG,
-                            "Rewarded ad loaded successfully"
-                        )
-
-                        _rewardedAdStatus.value =
-                            RewardedAdStatus.READY
-
-                        onLoaded?.invoke()
-                    }
-
-                    override fun onFailedToReceiveAd(
-                        ad: Ad?
-                    ) {
-
-                        val error =
-                            ad?.errorMessage
-                                ?: "Rewarded ad failed to load"
-
-                        Log.e(
-                            TAG,
-                            "Rewarded ad load failed: $error"
-                        )
-
-                        _rewardedAdStatus.value =
-                            RewardedAdStatus.FAILED
-
-                        _adErrorMessage.value =
-                            error
-
-                        onFailed?.invoke(error)
+                    // Auto retry with exponential backoff if not exceeded max retries
+                    if (retryCount < MAX_RETRIES) {
+                        retryCount++
+                        val delayMs = (retryCount * 3000L).coerceAtLeast(3000L)
+                        mainHandler.postDelayed({
+                            loadRewardedAd(appContext)
+                        }, delayMs)
                     }
                 }
-            )
-
+            })
         } catch (e: Exception) {
-
-            val error =
-                e.message ?: "Exception while loading rewarded ad"
-
-            Log.e(
-                TAG,
-                error,
-                e
-            )
-
-            _rewardedAdStatus.value =
-                RewardedAdStatus.FAILED
-
-            _adErrorMessage.value =
-                error
-
-            onFailed?.invoke(error)
+            isAdLoading = false
+            Log.e(TAG, "Exception during loadRewardedAd: ${e.message}", e)
+            _rewardedAdStatus.value = RewardedAdStatus.FAILED
+            _adErrorMessage.value = e.message ?: "Failed to load ad"
+            onFailed?.invoke(e.message ?: "Unknown error")
         }
     }
 
@@ -187,152 +137,104 @@ object StartIoAdManager {
         onAdClosedWithoutCompletion: () -> Unit = {},
         onFailedToShow: (String) -> Unit = {}
     ) {
+        val currentAd = rewardedAd
+        
+        // If ad is not ready yet, perform an immediate fast-load and then show
+        if (currentAd == null || !currentAd.isReady) {
+            Log.d(TAG, "Rewarded Ad not cached yet. Initiating priority load...")
+            _rewardedAdStatus.value = RewardedAdStatus.LOADING
 
-        val ad = rewardedAd
-
-        if (ad == null || !ad.isReady) {
-
-            Log.w(
-                TAG,
-                "Rewarded ad is not ready"
+            loadRewardedAd(
+                context = activity,
+                onLoaded = {
+                    mainHandler.post {
+                        showRewardedAd(
+                            activity = activity,
+                            onVideoCompleted = onVideoCompleted,
+                            onAdClosedWithoutCompletion = onAdClosedWithoutCompletion,
+                            onFailedToShow = onFailedToShow
+                        )
+                    }
+                },
+                onFailed = { msg ->
+                    mainHandler.post {
+                        _rewardedAdStatus.value = RewardedAdStatus.FAILED
+                        onFailedToShow("Ad is loading ($msg). Please tap 'Watch Ad' again in a few seconds.")
+                    }
+                }
             )
-
-            onFailedToShow(
-                "Rewarded ad is not ready yet."
-            )
-
-            loadRewardedAd(activity)
-
             return
         }
 
-        var completed = false
+        val hasRewarded = AtomicBoolean(false)
+        val hasCompletedVideo = AtomicBoolean(false)
 
-        ad.setVideoListener(
-            object : VideoListener {
-
-                override fun onVideoCompleted() {
-
-                    Log.d(
-                        TAG,
-                        "Rewarded video completed"
-                    )
-
-                    completed = true
-
-                    _rewardedAdStatus.value =
-                        RewardedAdStatus.COMPLETED
-
-                    onVideoCompleted()
+        currentAd.setVideoListener(object : VideoListener {
+            override fun onVideoCompleted() {
+                Log.d(TAG, "Start.io onVideoCompleted event fired!")
+                hasCompletedVideo.set(true)
+                if (hasRewarded.compareAndSet(false, true)) {
+                    mainHandler.post {
+                        _rewardedAdStatus.value = RewardedAdStatus.COMPLETED
+                        onVideoCompleted()
+                    }
                 }
             }
-        )
+        })
 
-        _rewardedAdStatus.value =
-            RewardedAdStatus.SHOWING
+        _rewardedAdStatus.value = RewardedAdStatus.SHOWING
 
-        try {
+        val displayed = currentAd.showAd(object : AdDisplayListener {
+            override fun adHidden(ad: Ad?) {
+                Log.d(TAG, "Rewarded Ad closed. CompletedVideo=${hasCompletedVideo.get()}, Rewarded=${hasRewarded.get()}")
+                _rewardedAdStatus.value = RewardedAdStatus.IDLE
+                rewardedAd = null
+                
+                // Immediately warm-up next ad for next cycle
+                loadRewardedAd(activity.applicationContext)
 
-            ad.showAd(
-                object : AdDisplayListener {
-
-                    override fun adDisplayed(
-                        ad: Ad?
-                    ) {
-
-                        Log.d(
-                            TAG,
-                            "Rewarded ad displayed"
-                        )
-                    }
-
-                    override fun adClicked(
-                        ad: Ad?
-                    ) {
-
-                        Log.d(
-                            TAG,
-                            "Rewarded ad clicked"
-                        )
-                    }
-
-                    override fun adHidden(
-                        ad: Ad?
-                    ) {
-
-                        Log.d(
-                            TAG,
-                            "Rewarded ad hidden. Completed=$completed"
-                        )
-
-                        rewardedAd = null
-
-                        if (!completed) {
-                            onAdClosedWithoutCompletion()
-                        }
-
-                        _rewardedAdStatus.value =
-                            RewardedAdStatus.IDLE
-
-                        // Preload the next rewarded ad.
-                        loadRewardedAd(activity)
-                    }
-
-                    override fun adNotDisplayed(
-                        ad: Ad?
-                    ) {
-
-                        val error =
-                            ad?.errorMessage
-                                ?: "Rewarded ad could not be displayed"
-
-                        Log.e(
-                            TAG,
-                            error
-                        )
-
-                        rewardedAd = null
-
-                        _rewardedAdStatus.value =
-                            RewardedAdStatus.FAILED
-
-                        _adErrorMessage.value =
-                            error
-
-                        onFailedToShow(error)
-
-                        // Try to prepare the next ad.
-                        loadRewardedAd(activity)
+                if (!hasCompletedVideo.get()) {
+                    mainHandler.post {
+                        onAdClosedWithoutCompletion()
                     }
                 }
-            )
+            }
 
-        } catch (e: Exception) {
+            override fun adDisplayed(ad: Ad?) {
+                Log.d(TAG, "Rewarded Ad successfully displayed on screen.")
+            }
 
-            val error =
-                e.message ?: "Failed to show rewarded ad"
+            override fun adClicked(ad: Ad?) {
+                Log.d(TAG, "Rewarded Ad clicked by user.")
+            }
 
-            Log.e(
-                TAG,
-                error,
-                e
-            )
+            override fun adNotDisplayed(ad: Ad?) {
+                val msg = ad?.errorMessage ?: "Ad could not be presented on current screen."
+                Log.w(TAG, "Rewarded Ad not displayed: $msg")
+                _rewardedAdStatus.value = RewardedAdStatus.FAILED
+                _adErrorMessage.value = msg
+                rewardedAd = null
+                loadRewardedAd(activity.applicationContext)
+                mainHandler.post {
+                    onFailedToShow(msg)
+                }
+            }
+        })
 
-            _rewardedAdStatus.value =
-                RewardedAdStatus.FAILED
-
-            _adErrorMessage.value =
-                error
-
-            onFailedToShow(error)
+        if (!displayed) {
+            Log.w(TAG, "StartAppAd.showAd returned false. Loading fresh ad...")
+            _rewardedAdStatus.value = RewardedAdStatus.FAILED
+            rewardedAd = null
+            loadRewardedAd(activity.applicationContext)
+            mainHandler.post {
+                onFailedToShow("Ad could not be presented. Please try again.")
+            }
         }
     }
 
     fun resetStatus() {
-
-        _rewardedAdStatus.value =
-            RewardedAdStatus.IDLE
-
+        _rewardedAdStatus.value = RewardedAdStatus.IDLE
         _adErrorMessage.value = null
     }
 }
+

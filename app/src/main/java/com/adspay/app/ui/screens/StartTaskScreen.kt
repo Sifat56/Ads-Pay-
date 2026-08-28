@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.adspay.app.ads.RewardedAdStatus
 import com.adspay.app.ads.StartIoAdManager
+import com.adspay.app.data.NetworkUtils
 import com.adspay.app.data.models.Quiz
 import com.adspay.app.data.models.User
 import com.adspay.app.data.repository.AdsPayRepository
@@ -34,7 +35,6 @@ import com.adspay.app.ui.components.CountdownTimerView
 import com.adspay.app.ui.components.StartIoBannerComposable
 import com.adspay.app.ui.theme.*
 import kotlinx.coroutines.delay
-import kotlin.random.Random
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,9 +49,8 @@ fun StartTaskScreen(
     val appSettings by AdsPayRepository.appSettings.collectAsState()
     val quizzes by AdsPayRepository.quizzes.collectAsState()
     val adStatus by StartIoAdManager.rewardedAdStatus.collectAsState()
-    val adError by StartIoAdManager.adErrorMessage.collectAsState()
 
-    val requiredCycleCount = appSettings.rewardCycleQuizzesCount
+    val requiredCycleCount = appSettings.rewardCycleQuizzesCount // 5
 
     // Local Quiz Engine State
     var currentQuizIndex by remember { mutableIntStateOf(0) }
@@ -68,9 +67,9 @@ fun StartTaskScreen(
     var isErrorMessage by remember { mutableStateOf(false) }
     var isShowingAdDialog by remember { mutableStateOf(false) }
 
-    // Pre-load Rewarded Ad when user is near completion
+    // Proactively pre-load Rewarded Ad when user is on task screen
     LaunchedEffect(user.currentCycleQuizzes) {
-        if (user.currentCycleQuizzes >= requiredCycleCount - 1 && appSettings.isRewardedAdsEnabled) {
+        if (appSettings.isRewardedAdsEnabled) {
             StartIoAdManager.loadRewardedAd(context)
         }
     }
@@ -78,7 +77,6 @@ fun StartTaskScreen(
     val activeQuizzes = remember(quizzes) { quizzes.filter { it.isActive } }
     val currentQuiz = activeQuizzes.getOrNull(currentQuizIndex % activeQuizzes.size.coerceAtLeast(1))
 
-    // Start Attempt and Countdown Timer
     fun setupNextQuiz() {
         if (currentQuiz != null) {
             selectedOptionIndex = -1
@@ -88,6 +86,12 @@ fun StartTaskScreen(
             isTimerFinished = false
             statusMessage = null
             isErrorMessage = false
+
+            if (!NetworkUtils.isInternetAvailable(context)) {
+                statusMessage = NetworkUtils.ERROR_NO_INTERNET
+                isErrorMessage = true
+                return
+            }
 
             val attemptRes = AdsPayRepository.startTaskAttempt(currentQuiz.id)
             attemptRes.onSuccess {
@@ -99,44 +103,63 @@ fun StartTaskScreen(
         }
     }
 
-    LaunchedEffect(currentQuizIndex) {
-        setupNextQuiz()
+    LaunchedEffect(currentQuizIndex, user.currentCycleQuizzes) {
+        if (user.currentCycleQuizzes < requiredCycleCount) {
+            setupNextQuiz()
+        }
     }
 
     // Active 10-second countdown
-    LaunchedEffect(currentQuizIndex, isTimerFinished) {
-        while (timerSecondsRemaining > 0 && !isTimerFinished) {
-            delay(1000L)
-            timerSecondsRemaining -= 1
-        }
-        if (timerSecondsRemaining <= 0) {
-            isTimerFinished = true
+    LaunchedEffect(currentQuizIndex, isTimerFinished, user.currentCycleQuizzes) {
+        if (user.currentCycleQuizzes < requiredCycleCount) {
+            while (timerSecondsRemaining > 0 && !isTimerFinished) {
+                delay(1000L)
+                timerSecondsRemaining -= 1
+            }
+            if (timerSecondsRemaining <= 0) {
+                isTimerFinished = true
+            }
         }
     }
 
     // Rewarded Ad completion trigger
     fun triggerRewardedAdFlow() {
+        if (!NetworkUtils.isInternetAvailable(context)) {
+            statusMessage = NetworkUtils.ERROR_NO_INTERNET
+            isErrorMessage = true
+            return
+        }
+
         if (!appSettings.isRewardedAdsEnabled) {
-            // If rewarded ads are disabled by admin, credit directly
+            // Admin fallback if video ads are disabled
             val res = AdsPayRepository.verifyAndClaimRewardedAd()
             res.onSuccess {
                 rewardCelebrationPoints = it
+            }.onFailure {
+                statusMessage = it.message
+                isErrorMessage = true
             }
             return
         }
 
-        if (activity == null) return
+        if (activity == null) {
+            statusMessage = "Could not attach ad window. Please reopen the screen."
+            isErrorMessage = true
+            return
+        }
 
         isShowingAdDialog = true
+        statusMessage = null
 
         StartIoAdManager.showRewardedAd(
             activity = activity,
             onVideoCompleted = {
-                // Server verified reward crediting
+                // Strictly verified Start.io completion callback -> Add points and reset cycle to 0/5
                 val res = AdsPayRepository.verifyAndClaimRewardedAd()
                 res.onSuccess { points ->
                     rewardCelebrationPoints = points
                     isShowingAdDialog = false
+                    currentQuizIndex = 0
                 }.onFailure { err ->
                     statusMessage = err.message
                     isErrorMessage = true
@@ -144,12 +167,12 @@ fun StartTaskScreen(
                 }
             },
             onAdClosedWithoutCompletion = {
-                statusMessage = "You must watch the full rewarded video ad to receive your 1 point."
+                statusMessage = "You must watch the full rewarded video ad to receive your 1 point reward."
                 isErrorMessage = true
                 isShowingAdDialog = false
             },
             onFailedToShow = { msg ->
-                statusMessage = "Ad is loading: $msg. Please try watching again in a few seconds."
+                statusMessage = "Ad loading: $msg. Please tap Watch Ad again in a few seconds."
                 isErrorMessage = true
                 isShowingAdDialog = false
                 StartIoAdManager.loadRewardedAd(context)
@@ -169,7 +192,7 @@ fun StartTaskScreen(
                             color = SurfaceWhite
                         )
                         Text(
-                            text = "Cycle Progress: ${user.currentCycleQuizzes}/$requiredCycleCount",
+                            text = "Cycle: ${user.currentCycleQuizzes}/$requiredCycleCount Quizzes",
                             style = MaterialTheme.typography.bodySmall,
                             color = PurpleLighter
                         )
@@ -237,13 +260,13 @@ fun StartTaskScreen(
                         ) {
                             Column {
                                 Text(
-                                    text = "Reward Cycle Goal",
+                                    text = "5-Quiz Reward Cycle",
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp,
+                                    fontSize = 15.sp,
                                     color = TextPrimary
                                 )
                                 Text(
-                                    text = "$requiredCycleCount Valid Quizzes ➔ 1 Rewarded Ad = +${appSettings.rewardPointsPerCycle} Point",
+                                    text = "Complete 5 Quizzes ➔ Watch Rewarded Ad ➔ Earn +${appSettings.rewardPointsPerCycle} Point",
                                     fontSize = 11.sp,
                                     color = TextSecondary
                                 )
@@ -265,20 +288,45 @@ fun StartTaskScreen(
 
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        val progressFraction = (user.currentCycleQuizzes.toFloat() / requiredCycleCount.toFloat()).coerceIn(0f, 1f)
-                        LinearProgressIndicator(
-                            progress = { progressFraction },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(10.dp)
-                                .clip(RoundedCornerShape(5.dp)),
-                            color = if (progressFraction >= 1f) GoldAccent else PurplePrimary,
-                            trackColor = PurpleSubtle
-                        )
+                        // Cycle Visual Steps Indicator
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            for (step in 1..5) {
+                                val isStepDone = user.currentCycleQuizzes >= step
+                                val isCurrentStep = user.currentCycleQuizzes == (step - 1)
+
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(horizontal = 2.dp)
+                                        .height(8.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(
+                                            when {
+                                                isStepDone -> GoldAccent
+                                                isCurrentStep -> PurplePrimary
+                                                else -> PurpleSubtle
+                                            }
+                                        )
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Start (0/5)", fontSize = 10.sp, color = TextMuted)
+                            Text("Quiz 3 (3/5)", fontSize = 10.sp, color = TextMuted)
+                            Text("Rewarded Ad (5/5)", fontSize = 10.sp, color = if (user.currentCycleQuizzes >= 5) GoldAccent else TextMuted, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
 
-                // If user reached the 5 quizzes threshold, show Rewarded Ad Claim Box!
+                // If user reached the 5 quizzes threshold (5/5), show Rewarded Ad Claim Box!
                 if (user.currentCycleQuizzes >= requiredCycleCount) {
                     Card(
                         modifier = Modifier
@@ -291,20 +339,28 @@ fun StartTaskScreen(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(20.dp),
+                                .padding(22.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Stars,
-                                contentDescription = null,
-                                tint = GoldAccent,
-                                modifier = Modifier.size(54.dp)
-                            )
+                            Surface(
+                                shape = CircleShape,
+                                color = GoldLight,
+                                modifier = Modifier.size(64.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.Stars,
+                                        contentDescription = null,
+                                        tint = GoldAccent,
+                                        modifier = Modifier.size(36.dp)
+                                    )
+                                }
+                            }
 
-                            Spacer(modifier = Modifier.height(10.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
 
                             Text(
-                                text = "Cycle Completed! 🎉",
+                                text = "5 of 5 Quizzes Completed! 🎉",
                                 fontSize = 20.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = TextPrimary
@@ -313,34 +369,58 @@ fun StartTaskScreen(
                             Spacer(modifier = Modifier.height(6.dp))
 
                             Text(
-                                text = "You have answered $requiredCycleCount quizzes! Watch the official Start.io Rewarded Video Ad to claim your +${appSettings.rewardPointsPerCycle} Point reward.",
+                                text = "Great job! Watch the official Start.io Rewarded Video Ad to verify your cycle and claim your +${appSettings.rewardPointsPerCycle} Point reward.",
                                 fontSize = 13.sp,
                                 color = TextSecondary,
                                 textAlign = TextAlign.Center
                             )
 
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(18.dp))
+
+                            val isAdActionInProgress = isShowingAdDialog || adStatus == RewardedAdStatus.LOADING || adStatus == RewardedAdStatus.SHOWING
 
                             Button(
                                 onClick = { triggerRewardedAdFlow() },
+                                enabled = !isAdActionInProgress,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(50.dp),
+                                    .height(52.dp),
                                 shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = GoldAccent, contentColor = TextPrimary)
-                            ) {
-                                Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(22.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "Watch Rewarded Ad (+${appSettings.rewardPointsPerCycle} Pt)",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = GoldAccent,
+                                    contentColor = TextPrimary,
+                                    disabledContainerColor = GoldAccent.copy(alpha = 0.5f),
+                                    disabledContentColor = TextPrimary.copy(alpha = 0.7f)
                                 )
+                            ) {
+                                if (isAdActionInProgress) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        color = TextPrimary,
+                                        strokeWidth = 2.5.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(
+                                        text = "Loading Video Ad...",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp
+                                    )
+                                } else {
+                                    Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(24.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Watch Rewarded Ad (+${appSettings.rewardPointsPerCycle} Point)",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp
+                                    )
+                                }
                             }
                         }
                     }
                 } else if (currentQuiz != null) {
-                    // Active Quiz Screen
+                    // Active Quiz Screen (Quiz 1 to 5)
+                    val activeQuizStep = user.currentCycleQuizzes + 1 // 1, 2, 3, 4, 5
+
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -354,7 +434,7 @@ fun StartTaskScreen(
                                 .fillMaxWidth()
                                 .padding(20.dp)
                         ) {
-                            // Top Quiz Bar: Category + 10s Timer
+                            // Top Quiz Bar: Step Number + 10s Timer
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -365,9 +445,9 @@ fun StartTaskScreen(
                                     color = PurpleSubtle
                                 ) {
                                     Text(
-                                        text = "Quiz #${(user.completedQuizzesCount + 1)} • ${currentQuiz.category}",
+                                        text = "Quiz $activeQuizStep of 5 • ${currentQuiz.category}",
                                         color = PurplePrimary,
-                                        fontSize = 12.sp,
+                                        fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold,
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                     )
@@ -469,18 +549,25 @@ fun StartTaskScreen(
                             if (!isAnswerSubmitted) {
                                 Button(
                                     onClick = {
+                                        if (!NetworkUtils.isInternetAvailable(context)) {
+                                            statusMessage = NetworkUtils.ERROR_NO_INTERNET
+                                            isErrorMessage = true
+                                            return@Button
+                                        }
+
                                         val attemptId = currentAttemptId
                                         if (attemptId == null) {
-                                            statusMessage = "Starting attempt session..."
+                                            statusMessage = "Initializing task attempt..."
+                                            isErrorMessage = true
                                             return@Button
                                         }
                                         if (selectedOptionIndex == -1) {
-                                            statusMessage = "Please select an answer option."
+                                            statusMessage = "Please select an option before submitting."
                                             isErrorMessage = true
                                             return@Button
                                         }
                                         if (!isTimerFinished) {
-                                            statusMessage = "Anti-fraud rule: You must remain on the quiz for the full 10-second countdown."
+                                            statusMessage = "Anti-fraud rule: Please wait for the 10-second timer to finish."
                                             isErrorMessage = true
                                             return@Button
                                         }
@@ -490,10 +577,10 @@ fun StartTaskScreen(
                                             isAnswerSubmitted = true
                                             isOptionCorrect = result.isCorrect
                                             if (result.isCorrect) {
-                                                statusMessage = "Correct answer! (${result.currentCycleProgress}/${result.requiredCycleQuizzes} quizzes completed)."
+                                                statusMessage = "Correct! (${result.currentCycleProgress}/$requiredCycleCount quizzes completed in this cycle)."
                                                 isErrorMessage = false
                                             } else {
-                                                statusMessage = "Incorrect! The right answer was option ${('A' + result.correctIndex)}."
+                                                statusMessage = "Incorrect. The right option was ${('A' + result.correctIndex)}. (${result.currentCycleProgress}/$requiredCycleCount completed)."
                                                 isErrorMessage = true
                                             }
                                         }.onFailure { err ->
@@ -526,7 +613,7 @@ fun StartTaskScreen(
                                     colors = ButtonDefaults.buttonColors(containerColor = PurpleDark)
                                 ) {
                                     Text(
-                                        text = if (user.currentCycleQuizzes >= requiredCycleCount) "Proceed to Rewarded Ad ➔" else "Next Quiz ➔",
+                                        text = if (user.currentCycleQuizzes >= requiredCycleCount) "Proceed to Rewarded Ad (5/5) ➔" else "Next Quiz (${user.currentCycleQuizzes + 1}/5) ➔",
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 14.sp,
                                         color = SurfaceWhite
@@ -590,7 +677,7 @@ fun StartTaskScreen(
                     },
                     title = {
                         Text(
-                            text = "Reward Claimed! 💎",
+                            text = "Reward Verified! 💎",
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center
                         )
@@ -601,14 +688,14 @@ fun StartTaskScreen(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
-                                text = "+${pts} Points Added",
+                                text = "+${pts} Point Added",
                                 fontSize = 24.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = GreenSuccess
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "Start.io rewarded ad successfully verified! Your new point balance is ${String.format("%.1f", user.points)} points.",
+                                text = "Start.io rewarded video ad completed! Cycle reset to 0/5. Your new balance is ${String.format("%.1f", user.points)} points.",
                                 fontSize = 13.sp,
                                 color = TextSecondary,
                                 textAlign = TextAlign.Center
@@ -623,7 +710,7 @@ fun StartTaskScreen(
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = PurplePrimary)
                         ) {
-                            Text("Start Next Cycle")
+                            Text("Start New Cycle (Quiz 1/5)")
                         }
                     },
                     dismissButton = {

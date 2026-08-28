@@ -16,7 +16,8 @@ import {
   Radio,
   ExternalLink,
   Lock,
-  KeyRound
+  KeyRound,
+  Download
 } from 'lucide-react';
 import { AdminUser, AppSettings } from '../../types';
 
@@ -81,16 +82,18 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
       <aside className={`hidden md:flex flex-col w-64 lg:w-72 bg-slate-900 border-r border-slate-800 p-4 sticky top-0 h-screen ${settings?.isMaintenanceMode ? 'pt-14' : ''}`}>
         {/* Brand Header */}
         <div className="flex items-center gap-3 px-2 py-4 mb-3 border-b border-slate-800/80">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-purple-600/30">
-            <Radio className="w-6 h-6 text-white" />
+          <div className="w-10 h-10 rounded-xl bg-black border border-slate-800 flex flex-col items-center justify-center shadow-lg shadow-black/60 p-1">
+            <span className="text-[9px] font-extrabold tracking-tighter text-white leading-none">ADS</span>
+            <span className="text-[9px] font-extrabold tracking-tighter text-amber-400 leading-none">PAY</span>
           </div>
           <div>
-            <div className="font-extrabold text-lg tracking-tight bg-gradient-to-r from-purple-400 to-indigo-200 bg-clip-text text-transparent">
-              Ads Pay Admin
+            <div className="font-extrabold text-lg tracking-tight text-white flex items-center gap-1.5">
+              <span>ADS PAY</span>
+              <span className="text-xs font-semibold text-emerald-400 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">Admin</span>
             </div>
             <div className="text-[11px] text-slate-400 font-mono flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              Start.io SDK • Live
+              Start.io • 207226080
             </div>
           </div>
         </div>
@@ -130,6 +133,27 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
           })}
         </nav>
 
+        {/* Download Android APK Box */}
+        <div className="my-2 p-3 bg-gradient-to-br from-emerald-950/40 to-slate-900 border border-emerald-500/30 rounded-xl">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1">
+              <Download className="w-3.5 h-3.5" /> Android APK
+            </span>
+            <span className="text-[10px] font-mono text-slate-400">v1.0 (Debug)</span>
+          </div>
+          <p className="text-[11px] text-slate-400 mb-2 leading-relaxed">
+            Download the latest Ads Pay APK with verified Start.io ads, 5-quiz task cycle & account isolation.
+          </p>
+          <a
+            href="/download/app-debug.apk"
+            download="AdsPay-debug.apk"
+            className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition shadow-md shadow-emerald-900/40"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Download APK
+          </a>
+        </div>
+
         {/* Admin User Footer Card */}
         <div className="mt-auto pt-4 border-t border-slate-800/80">
           <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 flex items-center justify-between">
@@ -165,11 +189,12 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
       {/* Mobile Top Navbar */}
       <header className={`md:hidden flex items-center justify-between p-4 bg-slate-900 border-b border-slate-800 sticky top-0 z-40 ${settings?.isMaintenanceMode ? 'mt-9' : ''}`}>
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center">
-            <Radio className="w-4 h-4 text-white" />
+          <div className="w-8 h-8 rounded-lg bg-black border border-slate-800 flex flex-col items-center justify-center p-0.5">
+            <span className="text-[7px] font-extrabold tracking-tighter text-white leading-none">ADS</span>
+            <span className="text-[7px] font-extrabold tracking-tighter text-amber-400 leading-none">PAY</span>
           </div>
-          <span className="font-extrabold text-base tracking-tight bg-gradient-to-r from-purple-400 to-indigo-200 bg-clip-text text-transparent">
-            Ads Pay Admin
+          <span className="font-extrabold text-base tracking-tight text-white">
+            ADS PAY <span className="text-xs text-emerald-400 font-semibold">Admin</span>
           </span>
         </div>
         <div className="flex items-center gap-2">

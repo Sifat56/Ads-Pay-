@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="128dp"
+    android:height="128dp"
+    android:viewportWidth="128"
+    android:viewportHeight="128">
+
+    <!-- Solid Deep Black Canvas -->
+    <path
+        android:pathData="M16,0 H112 A16,16 0 0 1 128,16 V112 A16,16 0 0 1 112,128 H16 A16,16 0 0 1 0,112 V16 A16,16 0 0 1 16,0 Z"
+        android:fillColor="#000000" />
+
+    <!-- Subtle Tech Border -->
+    <path
+        android:pathData="M16,2 H112 A14,14 0 0 1 126,16 V112 A14,14 0 0 1 112,126 H16 A14,14 0 0 1 2,112 V16 A14,14 0 0 1 16,2 Z"
+        android:strokeWidth="1.5"
+        android:strokeColor="#27272A"
+        android:fillColor="#00000000" />
+
+    <!-- Golden Coin Badge with Play Icon -->
+    <path
+        android:pathData="M64,28 A9,9 0 1,1 63.99,28 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:centerX="64"
+                android:centerY="28"
+                android:gradientRadius="9"
+                android:type="radial">
+                <item android:offset="0.0" android:color="#FDE047" />
+                <item android:offset="0.7" android:color="#F59E0B" />
+                <item android:offset="1.0" android:color="#D97706" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Play Triangle -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M62,25 L68,28 L62,31 Z" />
+
+    <!-- "ADS" Wordmark -->
+    <!-- 'A' -->
+    <path
+        android:pathData="M30,60 L41,38 L52,60 H46.5 L44,54.5 H38 L35.5,60 Z M39.5,50.5 H42.5 L41,44.5 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="30"
+                android:startY="60"
+                android:endX="52"
+                android:endY="38"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#E2E8F0" />
+                <item android:offset="1.0" android:color="#FFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- 'D' -->
+    <path
+        android:pathData="M55,38 H65 C70.5,38 74.5,41.5 74.5,49 C74.5,56.5 70.5,60 65,60 H55 Z M60,43 V55 H64.5 C67.5,55 69.5,52.8 69.5,49 C69.5,45.2 67.5,43 64.5,43 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="55"
+                android:startY="60"
+                android:endX="74.5"
+                android:endY="38"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#E2E8F0" />
+                <item android:offset="1.0" android:color="#FFFFFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- 'S' -->
+    <path
+        android:pathData="M78,55.8 C80,58.2 83,60 87,60 C91.5,60 94,58.2 94,55.5 C94,52.2 91,51 86,49.8 C81,48.5 77.5,46.5 77.5,43 C77.5,39.5 81,38 85.5,38 C89.5,38 92.5,39.5 94.5,41.8 L91,45.2 C89.5,43.8 87.5,42.8 85.5,42.8 C83.2,42.8 82,43.8 82,45 C82,46.5 84,47.5 88.5,48.8 C94,50 98.5,52 98.5,56 C98.5,60.5 94,62.8 87,62.8 C81.8,62.8 77.8,60.5 75.5,57.8 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="75.5"
+                android:startY="62.8"
+                android:endX="98.5"
+                android:endY="38"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#10B981" />
+                <item android:offset="1.0" android:color="#34D399" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Emerald-Gold Gradient Accent Bar -->
+    <path
+        android:pathData="M30,65 H98 V67 H30 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="30"
+                android:startY="65"
+                android:endX="98"
+                android:endY="65"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#10B981" />
+                <item android:offset="0.5" android:color="#F59E0B" />
+                <item android:offset="1.0" android:color="#34D399" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- "PAY" Wordmark (Golden) -->
+    <!-- 'P' -->
+    <path
+        android:pathData="M31,70 H43.5 C49,70 52,73 52,78 C52,83 49,86 43.5,86 H36 V93 H31 Z M36,74.5 V81.5 H43 C45.5,81.5 47,80.2 47,78 C47,75.8 45.5,74.5 43,74.5 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="31"
+                android:startY="93"
+                android:endX="52"
+                android:endY="70"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#F59E0B" />
+                <item android:offset="1.0" android:color="#FBBF24" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- 'A' -->
+    <path
+        android:pathData="M55,93 L65,70 L75,93 H69.8 L67.8,87.5 H62.2 L60.2,93 Z M63.5,83.2 H66.5 L65,77.2 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="55"
+                android:startY="93"
+                android:endX="75"
+                android:endY="70"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#F59E0B" />
+                <item android:offset="1.0" android:color="#FBBF24" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- 'Y' -->
+    <path
+        android:pathData="M78,70 L85.5,81 V93 H90.5 V81 L98,70 H92.5 L88,77.5 L83.5,70 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="78"
+                android:startY="93"
+                android:endX="98"
+                android:endY="70"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#F59E0B" />
+                <item android:offset="1.0" android:color="#FDE047" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Sparkle Star on Top Right -->
+    <path
+        android:fillColor="#FDE047"
+        android:pathData="M98,24 L100,28 L105,30 L100,32 L98,36 L96,32 L91,30 L96,28 Z" />
+
+</vector>

@@ -16,7 +16,8 @@ import {
   ArrowUpRight,
   Shield,
   CreditCard,
-  Plus
+  Plus,
+  Download
 } from 'lucide-react';
 import { 
   AreaChart, 
@@ -94,7 +95,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <a
+            href="/download/app-debug.apk"
+            download="AdsPay-debug.apk"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white shadow-lg shadow-emerald-600/25 transition"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Download APK
+          </a>
           <button
             onClick={fetchDashboard}
             disabled={loading}

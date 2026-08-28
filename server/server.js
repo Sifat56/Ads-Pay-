@@ -1,3 +1,4 @@
+import fs from 'fs';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -10,7 +11,7 @@ import { db } from './db.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const JWT_SECRET = process.env.JWT_SECRET || 'adspay_super_secret_jwt_key_2026_production';
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 const app = express();
 
@@ -783,29 +784,40 @@ app.post('/api/app/auth/login', (req, res) => {
     return res.status(403).json({ error: 'User login is temporarily paused.' });
   }
 
-  const { emailOrPhone } = req.body;
-  if (!emailOrPhone) {
-    return res.status(400).json({ error: 'Email or phone required.' });
+  const { emailOrPhone, password } = req.body;
+  if (!emailOrPhone || !password) {
+    return res.status(400).json({ error: 'Email/phone and password are required.' });
   }
 
   const clean = emailOrPhone.trim().toLowerCase();
+  const cleanPhone = emailOrPhone.trim();
   const users = db.get('users');
-  const user = users.find(u => u.email.toLowerCase() === clean || u.phone === clean);
+  const user = users.find(u => u.email.toLowerCase() === clean || u.phone === cleanPhone);
 
   if (!user) {
-    return res.status(404).json({ error: 'User not found. Please create an account.' });
+    return res.status(404).json({ error: 'Account not found. Please Sign Up to create your account.' });
   }
   if (user.isBlocked) {
-    return res.status(403).json({ error: 'Account suspended. Contact support.' });
+    return res.status(403).json({ error: 'Your account has been suspended by administration.' });
+  }
+
+  // Verify password hash if present
+  if (user.passwordHash) {
+    const isMatch = bcrypt.compareSync(password, user.passwordHash);
+    if (!isMatch) {
+      return res.status(401).json({ error: 'Incorrect password. Please check and try again.' });
+    }
   }
 
   user.lastActiveAt = Date.now();
   db.set('users', users);
 
-  res.json({ user });
+  // Return user without sensitive password hash
+  const { passwordHash, ...safeUser } = user;
+  res.json({ user: safeUser });
 });
 
-// User App Registration (0 Starting Points)
+// User App Registration (Unique Account, Safe Password Hash, 0 Starting Points)
 app.post('/api/app/auth/register', (req, res) => {
   const settings = db.getSettings();
   if (settings.isMaintenanceMode) {
@@ -815,14 +827,22 @@ app.post('/api/app/auth/register', (req, res) => {
     return res.status(403).json({ error: 'New user registrations are currently closed.' });
   }
 
-  const { name, email, phone, referralCode } = req.body;
-  if (!name || !email || !phone) {
-    return res.status(400).json({ error: 'All fields are required.' });
+  const { name, email, phone, password, referralCode } = req.body;
+  if (!name || !email || !phone || !password) {
+    return res.status(400).json({ error: 'All fields (Name, Email, Phone, Password) are required.' });
+  }
+
+  if (password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
   }
 
   const users = db.get('users');
   if (users.some(u => u.email.toLowerCase() === email.trim().toLowerCase())) {
-    return res.status(400).json({ error: 'An account with this email already exists.' });
+    return res.status(400).json({ error: 'An account with this email already exists. Please login.' });
+  }
+
+  if (users.some(u => u.phone.trim() === phone.trim())) {
+    return res.status(400).json({ error: 'An account with this phone number already exists. Please login.' });
   }
 
   let ref = null;
@@ -830,16 +850,20 @@ app.post('/api/app/auth/register', (req, res) => {
     const code = referralCode.trim().toUpperCase();
     const referrer = users.find(u => u.referralCode.toUpperCase() === code);
     if (!referrer) {
-      return res.status(400).json({ error: 'Invalid referral code.' });
+      return res.status(400).json({ error: 'Invalid referral code. Please check or leave blank.' });
     }
     ref = referrer.referralCode;
   }
+
+  const salt = bcrypt.genSaltSync(10);
+  const passwordHash = bcrypt.hashSync(password, salt);
 
   const newUser = {
     id: 'AP-' + Math.floor(10000 + Math.random() * 90000),
     name: name.trim(),
     email: email.trim().toLowerCase(),
     phone: phone.trim(),
+    passwordHash,
     points: 0.0, // Newly registered user starts with 0 points
     totalEarned: 0.0,
     totalWithdrawn: 0.0,
@@ -858,7 +882,8 @@ app.post('/api/app/auth/register', (req, res) => {
   users.push(newUser);
   db.set('users', users);
 
-  res.json({ message: 'Registration successful!', user: newUser });
+  const { passwordHash: _, ...safeUser } = newUser;
+  res.json({ message: 'Registration successful!', user: safeUser });
 });
 
 // Start Task Attempt
@@ -1090,6 +1115,28 @@ app.get('/api/app/user/history', (req, res) => {
   res.json({ transactions, withdrawals });
 });
 
+// Direct APK Download endpoint
+app.get(['/download/app-debug.apk', '/download/apk', '/api/download/apk', '/app-debug.apk'], (req, res) => {
+  const possiblePaths = [
+    path.join(__dirname, '../public/app-debug.apk'),
+    path.join(__dirname, '../.build-outputs/app-debug.apk'),
+    path.join(__dirname, '../app/build/outputs/apk/debug/app-debug.apk')
+  ];
+
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+      res.setHeader('Content-Disposition', 'attachment; filename="AdsPay-debug.apk"');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      return res.sendFile(p);
+    }
+  }
+
+  res.status(404).json({ error: 'APK build file not found' });
+});
+
 // ==========================================
 // VITE INTEGRATION / STATIC CLIENT SERVING
 // ==========================================
@@ -1105,8 +1152,16 @@ async function startServer() {
   } else {
     const distPath = path.join(__dirname, '../dist');
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+    app.get('*all', (req, res) => {
+      if (req.path.startsWith('/api/')) {
+        return res.status(404).json({ error: 'API endpoint not found' });
+      }
+      const indexPath = path.join(distPath, 'index.html');
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(200).send('Ads Pay Admin API server running.');
+      }
     });
   }
 

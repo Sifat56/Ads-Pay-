@@ -12,12 +12,13 @@ import { AppControlsView } from './components/controls/AppControlsView';
 import { ContentManagementView } from './components/content/ContentManagementView';
 import { NotificationsView } from './components/notifications/NotificationsView';
 import { AuditLogsView } from './components/audit/AuditLogsView';
-import { KeyRound, X, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { KeyRound, X, AlertCircle, CheckCircle2, WifiOff, RefreshCw } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [admin, setAdmin] = useState<AdminUser | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const [currentTab, setCurrentTab] = useState('dashboard');
 
   // Change Password Modal
@@ -35,23 +36,45 @@ export const App: React.FC = () => {
       setAdmin(null);
     };
 
+    const handleOnline = () => {
+      setIsOnline(true);
+      initApp();
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
     window.addEventListener('admin:unauthorized', handleUnauthorized);
-    return () => window.removeEventListener('admin:unauthorized', handleUnauthorized);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('admin:unauthorized', handleUnauthorized);
+    };
   }, []);
+
 
   const initApp = async () => {
     try {
       const token = api.getToken();
       if (token) {
-        const [meRes, settingsRes] = await Promise.all([
-          api.getMe(),
-          api.getSettings()
-        ]);
-        setAdmin(meRes.admin);
-        setSettings(settingsRes.settings);
+        try {
+          const [meRes, settingsRes] = await Promise.all([
+            api.getMe(),
+            api.getSettings()
+          ]);
+          setAdmin(meRes.admin);
+          setSettings(settingsRes.settings);
+        } catch (authErr: any) {
+          // If token was rejected/expired or could not be verified, clean up token
+          api.setToken(null);
+          setAdmin(null);
+        }
       }
-    } catch (e) {
-      console.error('Session validation error:', e);
+    } catch {
       api.setToken(null);
       setAdmin(null);
     } finally {
@@ -96,6 +119,32 @@ export const App: React.FC = () => {
     }
   };
 
+  if (!isOnline) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 mb-4 shadow-xl shadow-red-500/5">
+          <WifiOff className="w-8 h-8" />
+        </div>
+        <h2 className="text-xl font-bold text-white mb-2">Internet Connection Required</h2>
+        <p className="text-sm text-slate-400 max-w-sm mb-6">
+          Ads Pay is an online-only platform. An active internet connection is required to communicate with the server and manage operations.
+        </p>
+        <button
+          onClick={() => {
+            if (navigator.onLine) {
+              setIsOnline(true);
+              initApp();
+            }
+          }}
+          className="flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-purple-600/20 active:scale-95 cursor-pointer"
+        >
+          <RefreshCw className="w-4 h-4" />
+          Retry Connection
+        </button>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
@@ -106,6 +155,7 @@ export const App: React.FC = () => {
       </div>
     );
   }
+
 
   if (!admin) {
     return <LoginView onLoginSuccess={handleLoginSuccess} />;

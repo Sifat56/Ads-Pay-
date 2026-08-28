@@ -1,15 +1,32 @@
 package com.adspay.app.data.repository
 
 import android.content.Context
+import android.content.SharedPreferences
+import com.adspay.app.data.NetworkUtils
 import com.adspay.app.data.models.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import org.json.JSONArray
+import org.json.JSONObject
 import java.util.UUID
 import kotlin.random.Random
 
 object AdsPayRepository {
+    private var appContext: Context? = null
+    private var prefs: SharedPreferences? = null
+
+    private const val PREFS_NAME = "ads_pay_secure_prefs"
+    private const val KEY_ACTIVE_USER_ID = "key_active_user_id"
+    private const val KEY_USERS_JSON = "key_users_json"
+    private const val KEY_USER_CREDS_JSON = "key_user_creds_json"
+    private const val KEY_WITHDRAWALS_JSON = "key_withdrawals_json"
+    private const val KEY_TRANSACTIONS_JSON = "key_transactions_json"
+
+    // Credentials map (userId -> sha256 password hash)
+    private val userCredentials = mutableMapOf<String, String>()
+
     private val _currentUser = MutableStateFlow<User?>(null)
     val currentUser: StateFlow<User?> = _currentUser.asStateFlow()
 
@@ -38,10 +55,23 @@ object AdsPayRepository {
     private val activeAttempts = mutableMapOf<String, TaskAttempt>()
 
     init {
-        seedInitialData()
+        seedInitialQuizzesAndConfig()
     }
 
-    private fun seedInitialData() {
+    fun init(context: Context) {
+        appContext = context.applicationContext
+        prefs = appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        loadStoredData()
+    }
+
+    private fun hashPassword(password: String): String {
+        val salt = "AdsPay_2026_Secure_Auth_Salt_#99!"
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        val digest = md.digest((salt + password).toByteArray(Charsets.UTF_8))
+        return digest.joinToString("") { "%02x".format(it) }
+    }
+
+    private fun seedInitialQuizzesAndConfig() {
         val initialQuizzes = listOf(
             Quiz(
                 id = "q1",
@@ -126,6 +156,7 @@ object AdsPayRepository {
         )
         _quizzes.value = initialQuizzes
 
+        // Default Admin Officer account
         val adminUser = User(
             id = "AP-ADMIN01",
             name = "Admin Officer",
@@ -137,181 +168,199 @@ object AdsPayRepository {
             role = UserRole.ADMIN
         )
 
-        val demoUser = User(
-            id = "AP-" + Random.nextInt(10000, 99999),
-            name = "Sifat Islam",
-            email = "sifat@example.com",
-            phone = "+8801812345678",
-            points = 24.0,
-            totalEarned = 75.0,
-            totalWithdrawn = 50.0,
-            completedQuizzesCount = 18,
-            currentCycleQuizzes = 2,
-            referralCode = "PAY" + Random.nextInt(1000, 9999),
-            role = UserRole.USER
-        )
+        userCredentials["AP-ADMIN01"] = hashPassword("Admin@AdsPay2026!")
+        _userList.value = listOf(adminUser)
 
-        val user2 = User(
-            id = "AP-77312",
-            name = "Tanvir Ahmed",
-            email = "tanvir@example.com",
-            phone = "+8801912345678",
-            points = 142.0,
-            totalEarned = 210.0,
-            totalWithdrawn = 68.0,
-            completedQuizzesCount = 95,
-            currentCycleQuizzes = 4,
-            referralCode = "PAY7731",
-            role = UserRole.USER
-        )
+        // CRITICAL: _currentUser starts strictly as NULL. Fresh install ALWAYS requires Sign Up or Login!
+        _currentUser.value = null
 
-        val user3 = User(
-            id = "AP-88421",
-            name = "Rahim Mia",
-            email = "rahim@example.com",
-            phone = "+8801612345678",
-            points = 88.0,
-            totalEarned = 150.0,
-            totalWithdrawn = 62.0,
-            completedQuizzesCount = 60,
-            currentCycleQuizzes = 1,
-            referralCode = "PAY8842",
-            role = UserRole.USER
+        // System notification
+        val welcomeNotif = AppNotification(
+            id = "n1",
+            title = "Welcome to Ads Pay 🎉",
+            message = "Earn real cash by completing 5 simple quizzes (1/5 to 5/5) and watching Start.io rewarded video ads.",
+            type = "ANNOUNCEMENT",
+            timestamp = System.currentTimeMillis()
         )
+        _notifications.value = listOf(welcomeNotif)
+    }
 
-        _userList.value = listOf(adminUser, demoUser, user2, user3)
-        _currentUser.value = demoUser
+    private fun loadStoredData() {
+        val sp = prefs ?: return
+        try {
+            // Load credentials map
+            val credsStr = sp.getString(KEY_USER_CREDS_JSON, null)
+            if (!credsStr.isNullOrBlank()) {
+                val credsObj = JSONObject(credsStr)
+                credsObj.keys().forEach { key ->
+                    userCredentials[key] = credsObj.getString(key)
+                }
+            }
 
-        // Seed transactions
-        val initialTx = listOf(
-            RewardTransaction(
-                id = "tx1",
-                userId = demoUser.id,
-                points = 1.0,
-                type = TransactionType.REWARD_CYCLE,
-                title = "Rewarded Ad Completed",
-                description = "Completed 5 quizzes cycle and verified Start.io rewarded ad",
-                timestamp = System.currentTimeMillis() - 3600000 * 2
-            ),
-            RewardTransaction(
-                id = "tx2",
-                userId = demoUser.id,
-                points = 5.0,
-                type = TransactionType.SIGNUP_BONUS,
-                title = "Welcome Bonus",
-                description = "New account onboarding reward",
-                timestamp = System.currentTimeMillis() - 86400000 * 2
-            ),
-            RewardTransaction(
-                id = "tx3",
-                userId = demoUser.id,
-                points = 2.0,
-                type = TransactionType.REFERRAL_BONUS,
-                title = "Referral Commission",
-                description = "10% commission from referral task completions",
-                timestamp = System.currentTimeMillis() - 86400000
-            )
-        )
-        _transactions.value = initialTx
+            val usersStr = sp.getString(KEY_USERS_JSON, null)
+            if (!usersStr.isNullOrBlank()) {
+                val jsonArr = JSONArray(usersStr)
+                val loadedUsers = mutableListOf<User>()
+                for (i in 0 until jsonArr.length()) {
+                    val obj = jsonArr.getJSONObject(i)
+                    loadedUsers.add(
+                        User(
+                            id = obj.optString("id", ""),
+                            name = obj.optString("name", ""),
+                            email = obj.optString("email", ""),
+                            phone = obj.optString("phone", ""),
+                            points = obj.optDouble("points", 0.0),
+                            totalEarned = obj.optDouble("totalEarned", 0.0),
+                            totalWithdrawn = obj.optDouble("totalWithdrawn", 0.0),
+                            completedQuizzesCount = obj.optInt("completedQuizzesCount", 0),
+                            currentCycleQuizzes = obj.optInt("currentCycleQuizzes", 0),
+                            referralCode = obj.optString("referralCode", ""),
+                            referredBy = if (obj.has("referredBy") && !obj.isNull("referredBy")) obj.getString("referredBy") else null,
+                            isBlocked = obj.optBoolean("isBlocked", false),
+                            isTaskDisabled = obj.optBoolean("isTaskDisabled", false),
+                            isWithdrawDisabled = obj.optBoolean("isWithdrawDisabled", false),
+                            isReferralDisabled = obj.optBoolean("isReferralDisabled", false),
+                            role = if (obj.optString("role") == "ADMIN") UserRole.ADMIN else UserRole.USER
+                        )
+                    )
+                }
+                if (loadedUsers.isNotEmpty()) {
+                    val merged = (_userList.value.filter { it.role == UserRole.ADMIN } + loadedUsers).distinctBy { it.id }
+                    _userList.value = merged
+                }
+            }
 
-        // Seed sample withdrawals
-        val sampleWithdrawals = listOf(
-            WithdrawalRequest(
-                id = "w1",
-                userId = demoUser.id,
-                userName = demoUser.name,
-                userEmail = demoUser.email,
-                points = 50.0,
-                amountCurrency = 10.0,
-                currencySymbol = "৳",
-                method = WithdrawMethod.BKASH,
-                accountInfo = "01812345678",
-                accountHolderName = "Sifat Islam",
-                status = WithdrawalStatus.PAID,
-                requestDate = System.currentTimeMillis() - 86400000 * 3,
-                processedDate = System.currentTimeMillis() - 86400000 * 2,
-                adminNote = "Paid successfully via bKash TrxID: 9X82JKA"
-            ),
-            WithdrawalRequest(
-                id = "w2",
-                userId = user2.id,
-                userName = user2.name,
-                userEmail = user2.email,
-                points = 100.0,
-                amountCurrency = 20.0,
-                currencySymbol = "৳",
-                method = WithdrawMethod.NAGAD,
-                accountInfo = "01912345678",
-                accountHolderName = "Tanvir Ahmed",
-                status = WithdrawalStatus.PENDING,
-                requestDate = System.currentTimeMillis() - 3600000,
-                adminNote = ""
-            )
-        )
-        _withdrawals.value = sampleWithdrawals
+            // Restore active user session ONLY if saved and valid
+            val activeId = sp.getString(KEY_ACTIVE_USER_ID, null)
+            if (!activeId.isNullOrBlank()) {
+                val foundUser = _userList.value.find { it.id == activeId }
+                if (foundUser != null && !foundUser.isBlocked) {
+                    _currentUser.value = foundUser
+                } else {
+                    _currentUser.value = null
+                    sp.edit().remove(KEY_ACTIVE_USER_ID).apply()
+                }
+            } else {
+                _currentUser.value = null
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 
-        // Seed notifications
-        val sampleNotifications = listOf(
-            AppNotification(
-                id = "n1",
-                title = "Welcome to Ads Pay 🎉",
-                message = "Earn real cash by completing 5 simple quizzes and watching Start.io rewarded video ads.",
-                type = "ANNOUNCEMENT",
-                timestamp = System.currentTimeMillis() - 86400000
-            ),
-            AppNotification(
-                id = "n2",
-                title = "Withdrawal Paid Successfully 💰",
-                message = "Your bKash withdrawal for ৳10.00 (50 points) has been successfully processed!",
-                type = "WITHDRAWAL",
-                targetUserId = demoUser.id,
-                timestamp = System.currentTimeMillis() - 86400000 * 2
-            )
-        )
-        _notifications.value = sampleNotifications
+    private fun persistData() {
+        val sp = prefs ?: return
+        try {
+            val jsonArr = JSONArray()
+            _userList.value.forEach { u ->
+                val obj = JSONObject()
+                obj.put("id", u.id)
+                obj.put("name", u.name)
+                obj.put("email", u.email)
+                obj.put("phone", u.phone)
+                obj.put("points", u.points)
+                obj.put("totalEarned", u.totalEarned)
+                obj.put("totalWithdrawn", u.totalWithdrawn)
+                obj.put("completedQuizzesCount", u.completedQuizzesCount)
+                obj.put("currentCycleQuizzes", u.currentCycleQuizzes)
+                obj.put("referralCode", u.referralCode)
+                obj.put("referredBy", u.referredBy)
+                obj.put("isBlocked", u.isBlocked)
+                obj.put("isTaskDisabled", u.isTaskDisabled)
+                obj.put("isWithdrawDisabled", u.isWithdrawDisabled)
+                obj.put("isReferralDisabled", u.isReferralDisabled)
+                obj.put("role", u.role.name)
+                jsonArr.put(obj)
+            }
+            sp.edit().putString(KEY_USERS_JSON, jsonArr.toString()).apply()
+
+            // Persist credentials securely
+            val credsObj = JSONObject()
+            userCredentials.forEach { (userId, hash) ->
+                credsObj.put(userId, hash)
+            }
+            sp.edit().putString(KEY_USER_CREDS_JSON, credsObj.toString()).apply()
+
+            val currentId = _currentUser.value?.id
+            if (currentId != null) {
+                sp.edit().putString(KEY_ACTIVE_USER_ID, currentId).apply()
+            } else {
+                sp.edit().remove(KEY_ACTIVE_USER_ID).apply()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     // --- Authentication ---
-    fun login(emailOrPhone: String, password: String):Result<User> {
+    fun login(emailOrPhone: String, password: String): Result<User> {
+        // Enforce Internet check
+        if (!NetworkUtils.isInternetAvailable(appContext)) {
+            return Result.failure(Exception(NetworkUtils.ERROR_NO_INTERNET))
+        }
+
         if (!_appSettings.value.isLoginEnabled) {
             return Result.failure(Exception("User login is currently disabled by Admin."))
         }
+
+        if (emailOrPhone.isBlank() || password.isBlank()) {
+            return Result.failure(Exception("Please enter your email/phone and password."))
+        }
+
         val cleanInput = emailOrPhone.trim().lowercase()
-        val user = _userList.value.find { 
-            it.email.lowercase() == cleanInput || it.phone == emailOrPhone.trim() 
+        val cleanPhone = emailOrPhone.trim()
+
+        val user = _userList.value.find {
+            it.email.lowercase() == cleanInput || it.phone == cleanPhone
         }
 
-        if (user != null) {
-            if (user.isBlocked) {
-                return Result.failure(Exception("Your account has been suspended by administration."))
-            }
-            _currentUser.value = user
-            return Result.success(user)
+        if (user == null) {
+            return Result.failure(Exception("No account found with this email or phone. Please Sign Up."))
         }
 
-        // Auto-create for demo/testing convenience if not existing
-        val newUser = User(
-            id = "AP-" + Random.nextInt(10000, 99999),
-            name = if (cleanInput.contains("@")) cleanInput.substringBefore("@").replaceFirstChar { it.uppercase() } else "User",
-            email = if (cleanInput.contains("@")) cleanInput else "$cleanInput@adspay.app",
-            phone = if (!cleanInput.contains("@")) cleanInput else "+88017" + Random.nextInt(10000000, 99999999),
-            points = 0.0, // Initial 0 points balance
-            totalEarned = 0.0,
-            referralCode = "PAY" + Random.nextInt(1000, 9999),
-            role = UserRole.USER
-        )
-        _userList.update { it + newUser }
-        _currentUser.value = newUser
-        return Result.success(newUser)
+        if (user.isBlocked) {
+            return Result.failure(Exception("Your account has been suspended by administration."))
+        }
+
+        // Verify password hash
+        val storedHash = userCredentials[user.id]
+        val inputHash = hashPassword(password)
+        if (storedHash != null && storedHash != inputHash) {
+            return Result.failure(Exception("Incorrect password. Please check and try again."))
+        }
+
+        _currentUser.value = user
+        persistData()
+        return Result.success(user)
     }
 
     fun register(name: String, email: String, phone: String, password: String, referralCode: String?): Result<User> {
+        // Enforce Internet check
+        if (!NetworkUtils.isInternetAvailable(appContext)) {
+            return Result.failure(Exception(NetworkUtils.ERROR_NO_INTERNET))
+        }
+
         if (!_appSettings.value.isRegistrationEnabled) {
             return Result.failure(Exception("Registration is currently paused by Administrator."))
         }
 
-        if (_userList.value.any { it.email.equals(email.trim(), ignoreCase = true) }) {
-            return Result.failure(Exception("An account with this email already exists."))
+        if (name.isBlank() || email.isBlank() || phone.isBlank() || password.isBlank()) {
+            return Result.failure(Exception("All fields (Name, Email, Phone, Password) are required."))
+        }
+
+        if (password.length < 6) {
+            return Result.failure(Exception("Password must be at least 6 characters long."))
+        }
+
+        val cleanEmail = email.trim().lowercase()
+        val cleanPhone = phone.trim()
+
+        if (_userList.value.any { it.email.lowercase() == cleanEmail }) {
+            return Result.failure(Exception("An account with this email already exists. Please login."))
+        }
+
+        if (_userList.value.any { it.phone.trim() == cleanPhone }) {
+            return Result.failure(Exception("An account with this phone number already exists. Please login."))
         }
 
         var referrerUser: User? = null
@@ -323,37 +372,66 @@ object AdsPayRepository {
             }
         }
 
+        // Generate unique user ID (e.g. AP-48291)
+        var newUserId = "AP-" + Random.nextInt(10000, 99999)
+        while (_userList.value.any { it.id == newUserId }) {
+            newUserId = "AP-" + Random.nextInt(10000, 99999)
+        }
+
+        // Generate unique referral code (e.g. PAY4829)
+        var newRefCode = "PAY" + Random.nextInt(1000, 9999)
+        while (_userList.value.any { it.referralCode == newRefCode }) {
+            newRefCode = "PAY" + Random.nextInt(1000, 9999)
+        }
+
+        // Hash and store password securely
+        val pwdHash = hashPassword(password)
+        userCredentials[newUserId] = pwdHash
+
+        // Each user starts strictly with 0 points, 0 tasks, 0/5 cycle
         val newUser = User(
-            id = "AP-" + Random.nextInt(10000, 99999),
+            id = newUserId,
             name = name.trim(),
-            email = email.trim().lowercase(),
-            phone = phone.trim(),
-            points = 0.0, // Newly registered users start with 0 points
+            email = cleanEmail,
+            phone = cleanPhone,
+            points = 0.0,
             totalEarned = 0.0,
-            referralCode = "PAY" + Random.nextInt(1000, 9999),
+            totalWithdrawn = 0.0,
+            completedQuizzesCount = 0,
+            currentCycleQuizzes = 0,
+            referralCode = newRefCode,
             referredBy = referrerUser?.referralCode,
             role = UserRole.USER
         )
 
         _userList.update { it + newUser }
         _currentUser.value = newUser
+        persistData()
 
         return Result.success(newUser)
     }
 
     fun logout() {
         _currentUser.value = null
+        activeAttempts.clear()
+        prefs?.edit()?.remove(KEY_ACTIVE_USER_ID)?.apply()
     }
 
     fun switchUserRole(role: UserRole) {
         _currentUser.update { current ->
             current?.copy(role = role)
         }
+        updateUserInList(_currentUser.value)
     }
 
     // --- Task & Quiz Management ---
     fun startTaskAttempt(quizId: String): Result<TaskAttempt> {
-        val user = _currentUser.value ?: return Result.failure(Exception("Not authenticated"))
+        // Enforce Internet check
+        if (!NetworkUtils.isInternetAvailable(appContext)) {
+            return Result.failure(Exception(NetworkUtils.ERROR_NO_INTERNET))
+        }
+
+        val user = _currentUser.value ?: return Result.failure(Exception("Not authenticated. Please log in."))
         if (user.isBlocked || user.isTaskDisabled) {
             return Result.failure(Exception("Task access is restricted for this account."))
         }
@@ -374,6 +452,11 @@ object AdsPayRepository {
     }
 
     fun completeQuiz(attemptId: String, selectedOption: Int): Result<QuizCompletionResult> {
+        // Enforce Internet check
+        if (!NetworkUtils.isInternetAvailable(appContext)) {
+            return Result.failure(Exception(NetworkUtils.ERROR_NO_INTERNET))
+        }
+
         val attempt = activeAttempts[attemptId] ?: return Result.failure(Exception("Invalid or expired task attempt."))
         val user = _currentUser.value ?: return Result.failure(Exception("User not authenticated."))
         val quiz = _quizzes.value.find { it.id == attempt.quizId } ?: return Result.failure(Exception("Quiz question not found."))
@@ -386,7 +469,7 @@ object AdsPayRepository {
         }
 
         val isCorrect = selectedOption == quiz.correctOptionIndex
-        val updatedAttempt = attempt.copy(
+        attempt.copy(
             completedTime = System.currentTimeMillis(),
             selectedOptionIndex = selectedOption,
             isCorrect = isCorrect,
@@ -394,24 +477,25 @@ object AdsPayRepository {
         )
         activeAttempts.remove(attemptId)
 
-        val newCycleCount = user.currentCycleQuizzes + 1
         val requiredCount = _appSettings.value.rewardCycleQuizzesCount
-
+        val newCycleCount = (user.currentCycleQuizzes + 1).coerceAtMost(requiredCount)
         val isRewardCycleReady = newCycleCount >= requiredCount
 
+        // Quizzes alone do NOT add points; progress increases from 1/5 up to 5/5
         _currentUser.update { current ->
             current?.copy(
                 completedQuizzesCount = current.completedQuizzesCount + 1,
-                currentCycleQuizzes = if (isRewardCycleReady) requiredCount else newCycleCount
+                currentCycleQuizzes = newCycleCount
             )
         }
         updateUserInList(_currentUser.value)
+        persistData()
 
         return Result.success(
             QuizCompletionResult(
                 isCorrect = isCorrect,
                 correctIndex = quiz.correctOptionIndex,
-                currentCycleProgress = if (isRewardCycleReady) requiredCount else newCycleCount,
+                currentCycleProgress = newCycleCount,
                 requiredCycleQuizzes = requiredCount,
                 isRewardCycleReady = isRewardCycleReady
             )
@@ -419,6 +503,11 @@ object AdsPayRepository {
     }
 
     fun verifyAndClaimRewardedAd(): Result<Double> {
+        // Enforce Internet check
+        if (!NetworkUtils.isInternetAvailable(appContext)) {
+            return Result.failure(Exception(NetworkUtils.ERROR_NO_INTERNET))
+        }
+
         val user = _currentUser.value ?: return Result.failure(Exception("User not authenticated."))
         if (user.isBlocked || user.isTaskDisabled) {
             return Result.failure(Exception("Account restricted from claiming rewards."))
@@ -431,15 +520,16 @@ object AdsPayRepository {
 
         val rewardPoints = _appSettings.value.rewardPointsPerCycle
 
-        // Server-side atomic balance update
+        // Server-side / verified atomic balance update: +1 Point and Reset cycle to 0/5
         _currentUser.update { current ->
             current?.copy(
                 points = current.points + rewardPoints,
                 totalEarned = current.totalEarned + rewardPoints,
-                currentCycleQuizzes = 0 // Reset cycle cleanly
+                currentCycleQuizzes = 0 // Reset cycle strictly to 0
             )
         }
         updateUserInList(_currentUser.value)
+        persistData()
 
         recordTransaction(
             userId = user.id,
@@ -449,7 +539,7 @@ object AdsPayRepository {
             description = "Successfully watched Start.io Rewarded Video Ad after $requiredCount valid quizzes"
         )
 
-        // Process referral commission if referred
+        // Process referral commission (10% default)
         user.referredBy?.let { refCode ->
             val referrer = _userList.value.find { it.referralCode == refCode }
             if (referrer != null && !referrer.isReferralDisabled && _appSettings.value.isReferralEnabled) {
@@ -465,6 +555,8 @@ object AdsPayRepository {
                             } else u
                         }
                     }
+                    persistData()
+
                     recordTransaction(
                         userId = referrer.id,
                         points = commission,
@@ -486,6 +578,11 @@ object AdsPayRepository {
         accountInfo: String,
         accountHolderName: String
     ): Result<WithdrawalRequest> {
+        // Enforce Internet check
+        if (!NetworkUtils.isInternetAvailable(appContext)) {
+            return Result.failure(Exception(NetworkUtils.ERROR_NO_INTERNET))
+        }
+
         val user = _currentUser.value ?: return Result.failure(Exception("User not authenticated."))
         if (!_appSettings.value.isWithdrawEnabled) {
             return Result.failure(Exception("Withdrawals are currently disabled by administration."))
@@ -494,7 +591,6 @@ object AdsPayRepository {
             return Result.failure(Exception("Withdrawal access is restricted for this account."))
         }
 
-        // Validate method enablement
         when (method) {
             WithdrawMethod.BKASH -> if (!_appSettings.value.isBkashEnabled) return Result.failure(Exception("bKash withdrawals are currently unavailable."))
             WithdrawMethod.NAGAD -> if (!_appSettings.value.isNagadEnabled) return Result.failure(Exception("Nagad withdrawals are currently unavailable."))
@@ -522,6 +618,7 @@ object AdsPayRepository {
             )
         }
         updateUserInList(_currentUser.value)
+        persistData()
 
         val request = WithdrawalRequest(
             id = "WTH-" + UUID.randomUUID().toString().take(8).uppercase(),
@@ -574,7 +671,6 @@ object AdsPayRepository {
             }
         }
 
-        // If rejected or cancelled, refund points automatically
         if (newStatus == WithdrawalStatus.REJECTED || newStatus == WithdrawalStatus.CANCELLED) {
             _userList.update { list ->
                 list.map { u ->
@@ -592,6 +688,7 @@ object AdsPayRepository {
                     totalWithdrawn = (it.totalWithdrawn - item.points).coerceAtLeast(0.0)
                 ) }
             }
+            persistData()
 
             recordTransaction(
                 userId = item.userId,
@@ -603,7 +700,6 @@ object AdsPayRepository {
             )
         }
 
-        // Notify user
         val notificationMsg = when (newStatus) {
             WithdrawalStatus.PAID -> "Your withdrawal of ${item.amountCurrency} ${item.currencySymbol} has been sent! Note: $adminNote"
             WithdrawalStatus.APPROVED -> "Your withdrawal has been approved and is being processed."
@@ -654,6 +750,7 @@ object AdsPayRepository {
         if (_currentUser.value?.id == userId) {
             _currentUser.update { it?.copy(points = newPoints) }
         }
+        persistData()
 
         recordTransaction(
             userId = userId,
@@ -699,6 +796,7 @@ object AdsPayRepository {
         if (_currentUser.value?.id == userId) {
             _currentUser.value = updated
         }
+        persistData()
 
         logAudit(
             adminId = adminId,
