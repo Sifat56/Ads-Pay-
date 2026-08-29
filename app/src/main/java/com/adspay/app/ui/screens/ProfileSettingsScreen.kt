@@ -35,6 +35,8 @@ fun ProfileSettingsScreen(
     val context = LocalContext.current
     val appSettings by AdsPayRepository.appSettings.collectAsState()
     var showAboutDialog by remember { mutableStateOf(false) }
+    var showServerDialog by remember { mutableStateOf(false) }
+    var serverUrlInput by remember { mutableStateOf(com.adspay.app.data.api.ApiConfig.getBaseUrl()) }
 
     Scaffold(
         topBar = {
@@ -257,6 +259,18 @@ fun ProfileSettingsScreen(
                         HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = DividerColor)
 
                         SettingRow(
+                            title = "Server Connection / API",
+                            subtitle = com.adspay.app.data.api.ApiConfig.getBaseUrl(),
+                            icon = Icons.Default.CloudSync,
+                            onClick = { 
+                                serverUrlInput = com.adspay.app.data.api.ApiConfig.getBaseUrl()
+                                showServerDialog = true 
+                            }
+                        )
+
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = DividerColor)
+
+                        SettingRow(
                             title = "About Ads Pay",
                             subtitle = "Version 1.0 • Start.io SDK • Security Rules",
                             icon = Icons.Default.Info,
@@ -284,6 +298,50 @@ fun ProfileSettingsScreen(
                     Text("Logout from Account", fontWeight = FontWeight.Bold)
                 }
             }
+        }
+
+        if (showServerDialog) {
+            AlertDialog(
+                onDismissRequest = { showServerDialog = false },
+                title = { Text("Server & API Endpoint", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column {
+                        Text(
+                            "Enter the Base URL of your Ads Pay backend server (e.g., https://your-server.com or local proxy).",
+                            fontSize = 13.sp,
+                            color = TextSecondary
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = serverUrlInput,
+                            onValueChange = { serverUrlInput = it },
+                            label = { Text("Server Base URL") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (serverUrlInput.isNotBlank()) {
+                                com.adspay.app.data.api.ApiConfig.updateBaseUrl(serverUrlInput, context)
+                                AdsPayRepository.syncRemoteSettings()
+                                AdsPayRepository.syncUserProfile()
+                            }
+                            showServerDialog = false
+                        }
+                    ) {
+                        Text("Save & Connect")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showServerDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
 
         if (showAboutDialog) {

@@ -49,6 +49,8 @@ fun AuthScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var successMessage by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
+    var showServerDialog by remember { mutableStateOf(false) }
+    var serverUrlInput by remember { mutableStateOf(com.adspay.app.data.api.ApiConfig.getBaseUrl()) }
     val coroutineScope = rememberCoroutineScope()
 
     val appSettings by AdsPayRepository.appSettings.collectAsState()
@@ -73,12 +75,30 @@ fun AuthScreen(
                         brush = Brush.verticalGradient(
                             colors = listOf(PurpleDarker, PurpleDark, PurplePrimary)
                         )
-                    ),
-                contentAlignment = Alignment.Center
+                    )
             ) {
+                // Server Config Icon top-right
+                IconButton(
+                    onClick = {
+                        serverUrlInput = com.adspay.app.data.api.ApiConfig.getBaseUrl()
+                        showServerDialog = true
+                    },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CloudSync,
+                        contentDescription = "Server Settings",
+                        tint = SurfaceWhite.copy(alpha = 0.8f)
+                    )
+                }
+
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(horizontal = 24.dp)
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(horizontal = 24.dp)
                 ) {
                     Surface(
                         shape = RoundedCornerShape(18.dp),
@@ -394,6 +414,49 @@ fun AuthScreen(
             }
 
             Spacer(modifier = Modifier.height(20.dp))
+        }
+
+        if (showServerDialog) {
+            AlertDialog(
+                onDismissRequest = { showServerDialog = false },
+                title = { Text("Server & API Endpoint", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column {
+                        Text(
+                            "Enter the Base URL of your Ads Pay backend server (e.g., https://your-server.com or local proxy).",
+                            fontSize = 13.sp,
+                            color = TextSecondary
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = serverUrlInput,
+                            onValueChange = { serverUrlInput = it },
+                            label = { Text("Server Base URL") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (serverUrlInput.isNotBlank()) {
+                                com.adspay.app.data.api.ApiConfig.updateBaseUrl(serverUrlInput, context)
+                                AdsPayRepository.syncRemoteSettings()
+                            }
+                            showServerDialog = false
+                        }
+                    ) {
+                        Text("Save & Connect")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showServerDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
     }
 }

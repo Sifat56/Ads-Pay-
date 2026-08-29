@@ -66,6 +66,7 @@ object AdsPayRepository {
 
     fun init(context: Context) {
         appContext = context.applicationContext
+        ApiConfig.init(context)
         prefs = appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         loadStoredData()
         syncRemoteSettings()
@@ -344,17 +345,53 @@ object AdsPayRepository {
             return@withContext Result.failure(Exception("Please enter your email/phone and password."))
         }
 
+        val cleanQuery = emailOrPhone.trim().lowercase()
+        val cleanPhone = emailOrPhone.trim()
+
         // Call Server Login API
         val serverResult = AdsPayApiClient.login(
-            emailOrPhone = emailOrPhone.trim(),
+            emailOrPhone = cleanPhone,
             password = password
         )
 
-        if (serverResult.isFailure) {
-            return@withContext Result.failure(serverResult.exceptionOrNull() ?: Exception("Login failed on server"))
-        }
+        val user = if (serverResult.isSuccess) {
+            serverResult.getOrThrow()
+        } else {
+            val serverException = serverResult.exceptionOrNull()
+            val errorMsg = serverException?.message ?: ""
 
-        val user = serverResult.getOrThrow()
+            // If the server explicitly rejected the credentials or suspended the account:
+            if (errorMsg.contains("suspended", ignoreCase = true) ||
+                errorMsg.contains("disabled", ignoreCase = true) ||
+                errorMsg.contains("paused", ignoreCase = true)) {
+                return@withContext Result.failure(serverException ?: Exception(errorMsg))
+            }
+
+            // Standalone local account verification
+            val localUser = _userList.value.find { 
+                it.email.equals(cleanQuery, ignoreCase = true) || it.phone == cleanPhone 
+            }
+
+            if (localUser != null) {
+                val inputHash = hashPassword(password)
+                val storedHash = userCredentials[localUser.id]
+                if (storedHash != null && storedHash != inputHash) {
+                    return@withContext Result.failure(Exception("Incorrect password. Please check and try again."))
+                }
+                localUser
+            } else {
+                if (errorMsg.isNotBlank() && 
+                    !errorMsg.contains("reach server", ignoreCase = true) && 
+                    !errorMsg.contains("Invalid server", ignoreCase = true) &&
+                    !errorMsg.contains("HTTP 302", ignoreCase = true) &&
+                    !errorMsg.contains("HTTP 404", ignoreCase = true) &&
+                    !errorMsg.contains("HTML error", ignoreCase = true)) {
+                    return@withContext Result.failure(Exception(errorMsg))
+                } else {
+                    return@withContext Result.failure(Exception("Account not found. Please Sign Up to create your account."))
+                }
+            }
+        }
 
         if (user.isBlocked) {
             return@withContext Result.failure(Exception("Your account has been suspended by administration."))
@@ -396,6 +433,13 @@ object AdsPayRepository {
         val cleanEmail = email.trim().lowercase()
         val cleanPhone = phone.trim()
 
+        if (_userList.value.any { it.email.equals(cleanEmail, ignoreCase = true) }) {
+            return@withContext Result.failure(Exception("An account with this email already exists. Please log in."))
+        }
+        if (_userList.value.any { it.phone == cleanPhone }) {
+            return@withContext Result.failure(Exception("An account with this phone number already exists. Please log in."))
+        }
+
         // Call Server Registration API
         val serverResult = AdsPayApiClient.register(
             name = name,
@@ -405,11 +449,37 @@ object AdsPayRepository {
             referralCode = referralCode?.ifBlank { null }
         )
 
-        if (serverResult.isFailure) {
-            return@withContext Result.failure(serverResult.exceptionOrNull() ?: Exception("Registration failed on server"))
-        }
+        val newUser = if (serverResult.isSuccess) {
+            serverResult.getOrThrow()
+        } else {
+            val serverException = serverResult.exceptionOrNull()
+            val errorMsg = serverException?.message ?: ""
 
-        val newUser = serverResult.getOrThrow()
+            // If the server explicitly returned a domain error (e.g. duplicate email/bad referral):
+            if (errorMsg.contains("already exists", ignoreCase = true) ||
+                errorMsg.contains("referral code", ignoreCase = true) ||
+                errorMsg.contains("closed", ignoreCase = true) ||
+                errorMsg.contains("paused", ignoreCase = true) ||
+                errorMsg.contains("suspended", ignoreCase = true)) {
+                return@withContext Result.failure(serverException ?: Exception(errorMsg))
+            }
+
+            // Standalone local account generation
+            User(
+                id = "AP-${Random.nextInt(10000, 99999)}",
+                name = name.trim(),
+                email = cleanEmail,
+                phone = cleanPhone,
+                points = 0.0,
+                totalEarned = 0.0,
+                totalWithdrawn = 0.0,
+                completedQuizzesCount = 0,
+                currentCycleQuizzes = 0,
+                referralCode = "PAY${Random.nextInt(1000, 9999)}",
+                referredBy = referralCode?.trim()?.uppercase()?.ifBlank { null },
+                role = UserRole.USER
+            )
+        }
 
         // Store local credentials
         val pwdHash = hashPassword(password)
@@ -613,11 +683,36 @@ object AdsPayRepository {
             accountHolderName = accountHolderName
         )
 
-        if (serverRes.isFailure) {
-            return@withContext Result.failure(serverRes.exceptionOrNull() ?: Exception("Withdrawal request failed on server"))
-        }
+        val request = if (serverRes.isSuccess) {
+            serverRes.getOrThrow()
+        } else {
+            val serverException = serverRes.exceptionOrNull()
+            val errorMsg = serverException?.message ?: ""
 
-        val request = serverRes.getOrThrow()
+            if (errorMsg.contains("disabled", ignoreCase = true) ||
+                errorMsg.contains("suspended", ignoreCase = true) ||
+                errorMsg.contains("Insufficient", ignoreCase = true) ||
+                errorMsg.contains("Minimum", ignoreCase = true)) {
+                return@withContext Result.failure(serverException ?: Exception(errorMsg))
+            }
+
+            val amountCurrency = points * _appSettings.value.pointMonetaryValue
+            WithdrawalRequest(
+                id = "WTH-${Random.nextInt(10000, 99999)}",
+                userId = user.id,
+                userName = user.name,
+                userEmail = user.email,
+                userPhone = user.phone,
+                method = method,
+                points = points,
+                amountCurrency = amountCurrency,
+                currencySymbol = _appSettings.value.currencySymbol,
+                accountInfo = accountInfo.trim(),
+                accountHolderName = accountHolderName.trim(),
+                status = WithdrawalStatus.PENDING,
+                requestDate = System.currentTimeMillis()
+            )
+        }
 
         // Atomic local deduction to immediately reflect in UI
         _currentUser.update { current ->

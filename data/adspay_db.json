@@ -166,6 +166,26 @@
       "isReferralDisabled": false,
       "createdAt": 1788032678854,
       "lastActiveAt": 1788032682459
+    },
+    {
+      "id": "AP-72056",
+      "name": "Tester Demo",
+      "email": "testdemo@adspay.com",
+      "phone": "01777000111",
+      "passwordHash": "$2b$10$eeGRDzzqlGJ.LUslJay/H.bWJo5z4/fJQMvB7CraiQkuF2XzD/BOi",
+      "points": 0,
+      "totalEarned": 0,
+      "totalWithdrawn": 0,
+      "completedQuizzesCount": 0,
+      "currentCycleQuizzes": 0,
+      "referralCode": "PAY7614",
+      "referredBy": null,
+      "isBlocked": false,
+      "isTaskDisabled": false,
+      "isWithdrawDisabled": false,
+      "isReferralDisabled": false,
+      "createdAt": 1788033865655,
+      "lastActiveAt": 1788033868741
     }
   ],
   "quizzes": [
