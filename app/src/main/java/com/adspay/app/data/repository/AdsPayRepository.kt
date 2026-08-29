@@ -69,6 +69,7 @@ object AdsPayRepository {
         prefs = appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         loadStoredData()
         syncRemoteSettings()
+        syncUserProfile()
     }
 
     fun syncRemoteSettings() {
@@ -80,6 +81,22 @@ object AdsPayRepository {
                 }
             } catch (e: Exception) {
                 // Silently retain fallback settings
+            }
+        }
+    }
+
+    fun syncUserProfile() {
+        val current = _currentUser.value ?: return
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val res = AdsPayApiClient.fetchUserProfile(current.id)
+                res.onSuccess { latestUser ->
+                    _currentUser.value = latestUser
+                    updateUserInList(latestUser)
+                    persistData()
+                }
+            } catch (e: Exception) {
+                // Silently retain cached user
             }
         }
     }

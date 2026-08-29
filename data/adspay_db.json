@@ -1,0 +1,415 @@
+{
+  "adminUsers": [
+    {
+      "id": "ADMIN-001",
+      "name": "Master Administrator",
+      "email": "admin@adspay.app",
+      "passwordHash": "$2b$10$rdgYjJs1ZucpTcbySNwF6.oHE7IM6Y2wLj3qUXUxrFx2OJaAHvaJe",
+      "role": "SUPER_ADMIN",
+      "createdAt": 1785437587653,
+      "lastLoginAt": 1788029587653
+    }
+  ],
+  "users": [
+    {
+      "id": "AP-10824",
+      "name": "Sifat Islam",
+      "email": "sifat@example.com",
+      "phone": "+8801812345678",
+      "points": 45,
+      "totalEarned": 95,
+      "totalWithdrawn": 50,
+      "completedQuizzesCount": 45,
+      "currentCycleQuizzes": 3,
+      "referralCode": "PAY1082",
+      "referredBy": null,
+      "isBlocked": false,
+      "isTaskDisabled": false,
+      "isWithdrawDisabled": false,
+      "isReferralDisabled": false,
+      "createdAt": 1786733587654,
+      "lastActiveAt": 1788022387654
+    },
+    {
+      "id": "AP-77312",
+      "name": "Tanvir Ahmed",
+      "email": "tanvir@example.com",
+      "phone": "+8801912345678",
+      "points": 142,
+      "totalEarned": 210,
+      "totalWithdrawn": 68,
+      "completedQuizzesCount": 95,
+      "currentCycleQuizzes": 4,
+      "referralCode": "PAY7731",
+      "referredBy": "PAY1082",
+      "isBlocked": false,
+      "isTaskDisabled": false,
+      "isWithdrawDisabled": false,
+      "isReferralDisabled": false,
+      "createdAt": 1787165587654,
+      "lastActiveAt": 1788011587654
+    },
+    {
+      "id": "AP-88421",
+      "name": "Rahim Mia",
+      "email": "rahim@example.com",
+      "phone": "+8801612345678",
+      "points": 88,
+      "totalEarned": 150,
+      "totalWithdrawn": 62,
+      "completedQuizzesCount": 60,
+      "currentCycleQuizzes": 1,
+      "referralCode": "PAY8842",
+      "referredBy": "PAY1082",
+      "isBlocked": false,
+      "isTaskDisabled": false,
+      "isWithdrawDisabled": false,
+      "isReferralDisabled": false,
+      "createdAt": 1787424787654,
+      "lastActiveAt": 1787986387654
+    },
+    {
+      "id": "AP-99014",
+      "name": "Fraud Test User",
+      "email": "bot_test@example.com",
+      "phone": "+8801512345678",
+      "points": 0,
+      "totalEarned": 0,
+      "totalWithdrawn": 0,
+      "completedQuizzesCount": 2,
+      "currentCycleQuizzes": 0,
+      "referralCode": "PAY9901",
+      "referredBy": null,
+      "isBlocked": true,
+      "isTaskDisabled": true,
+      "isWithdrawDisabled": true,
+      "isReferralDisabled": true,
+      "createdAt": 1787856787654,
+      "lastActiveAt": 1787943187654
+    },
+    {
+      "id": "AP-52090",
+      "name": "Test User",
+      "email": "test@test.com",
+      "phone": "01700000000",
+      "passwordHash": "$2b$10$yhkTXnRpwpiPa7iUIUetaORZx9YBrD9kM7l2QPxhPK18T2hctss0i",
+      "points": 0,
+      "totalEarned": 0,
+      "totalWithdrawn": 0,
+      "completedQuizzesCount": 0,
+      "currentCycleQuizzes": 0,
+      "referralCode": "PAY8730",
+      "referredBy": null,
+      "isBlocked": false,
+      "isTaskDisabled": false,
+      "isWithdrawDisabled": false,
+      "isReferralDisabled": false,
+      "createdAt": 1788031591891,
+      "lastActiveAt": 1788031591891
+    },
+    {
+      "id": "AP-81392",
+      "name": "Test User 2",
+      "email": "test2@test.com",
+      "phone": "01700000001",
+      "passwordHash": "$2b$10$ZZi3svEb3CnHRmaxJnd/5eH6zPhD83uSpqptWTl6W0uTDGAnUe/Xm",
+      "points": 0,
+      "totalEarned": 0,
+      "totalWithdrawn": 0,
+      "completedQuizzesCount": 0,
+      "currentCycleQuizzes": 0,
+      "referralCode": "PAY3866",
+      "referredBy": null,
+      "isBlocked": false,
+      "isTaskDisabled": false,
+      "isWithdrawDisabled": false,
+      "isReferralDisabled": false,
+      "createdAt": 1788031594625,
+      "lastActiveAt": 1788031594625
+    },
+    {
+      "id": "AP-55864",
+      "name": "Rahim Khan",
+      "email": "rahim@test.com",
+      "phone": "01811223344",
+      "passwordHash": "$2b$10$Sw/P7zYbmrYnw6.kDJJ7COwODkBORftVJNjF/bMmOcGNFEeEbnCCm",
+      "points": 0,
+      "totalEarned": 0,
+      "totalWithdrawn": 0,
+      "completedQuizzesCount": 0,
+      "currentCycleQuizzes": 0,
+      "referralCode": "PAY3337",
+      "referredBy": null,
+      "isBlocked": false,
+      "isTaskDisabled": false,
+      "isWithdrawDisabled": false,
+      "isReferralDisabled": false,
+      "createdAt": 1788031732774,
+      "lastActiveAt": 1788031732774
+    }
+  ],
+  "quizzes": [
+    {
+      "id": "q1",
+      "question": "What is the primary cryptocurrency created by Satoshi Nakamoto?",
+      "options": [
+        "Bitcoin (BTC)",
+        "Ethereum (ETH)",
+        "Solana (SOL)",
+        "Dogecoin (DOGE)"
+      ],
+      "correctOptionIndex": 0,
+      "timerSeconds": 10,
+      "category": "Crypto",
+      "isActive": true,
+      "order": 1
+    },
+    {
+      "id": "q2",
+      "question": "What does \"CPU\" stand for in computer science?",
+      "options": [
+        "Central Process Unit",
+        "Central Processing Unit",
+        "Computer Personal Unit",
+        "Core Power Unit"
+      ],
+      "correctOptionIndex": 1,
+      "timerSeconds": 10,
+      "category": "Tech",
+      "isActive": true,
+      "order": 2
+    },
+    {
+      "id": "q3",
+      "question": "What is 45 + 55 × 2?",
+      "options": [
+        "200",
+        "155",
+        "145",
+        "190"
+      ],
+      "correctOptionIndex": 1,
+      "timerSeconds": 10,
+      "category": "Math",
+      "isActive": true,
+      "order": 3
+    },
+    {
+      "id": "q4",
+      "question": "Which mobile operating system is developed by Google?",
+      "options": [
+        "iOS",
+        "Android",
+        "Windows Mobile",
+        "Symbian"
+      ],
+      "correctOptionIndex": 1,
+      "timerSeconds": 10,
+      "category": "Mobile",
+      "isActive": true,
+      "order": 4
+    },
+    {
+      "id": "q5",
+      "question": "How many quizzes are required to unlock a Rewarded Video Ad in Ads Pay?",
+      "options": [
+        "3 Quizzes",
+        "5 Quizzes",
+        "10 Quizzes",
+        "1 Quiz"
+      ],
+      "correctOptionIndex": 1,
+      "timerSeconds": 10,
+      "category": "Ads Pay",
+      "isActive": true,
+      "order": 5
+    },
+    {
+      "id": "q6",
+      "question": "What is the chemical symbol for Gold?",
+      "options": [
+        "Ag",
+        "Au",
+        "Fe",
+        "Cu"
+      ],
+      "correctOptionIndex": 1,
+      "timerSeconds": 10,
+      "category": "Science",
+      "isActive": true,
+      "order": 6
+    },
+    {
+      "id": "q7",
+      "question": "Which of the following is a fast mobile financial service in Bangladesh?",
+      "options": [
+        "bKash",
+        "PayPal",
+        "Venmo",
+        "CashApp"
+      ],
+      "correctOptionIndex": 0,
+      "timerSeconds": 10,
+      "category": "General",
+      "isActive": true,
+      "order": 7
+    },
+    {
+      "id": "q8",
+      "question": "Which network standard does BEP20 belong to?",
+      "options": [
+        "BNB Smart Chain (BSC)",
+        "Ethereum Mainnet",
+        "Bitcoin Lightning",
+        "Polygon POS"
+      ],
+      "correctOptionIndex": 0,
+      "timerSeconds": 10,
+      "category": "Crypto",
+      "isActive": true,
+      "order": 8
+    }
+  ],
+  "taskAttempts": [],
+  "rewardTransactions": [
+    {
+      "id": "tx_101",
+      "userId": "AP-10824",
+      "points": 1,
+      "type": "REWARD_CYCLE",
+      "title": "Rewarded Ad Completed",
+      "description": "Completed 5 quizzes cycle and verified Start.io video ad",
+      "timestamp": 1788022387654,
+      "referenceId": ""
+    },
+    {
+      "id": "tx_102",
+      "userId": "AP-10824",
+      "points": 0.1,
+      "type": "REFERRAL_BONUS",
+      "title": "Referral Commission",
+      "description": "10% commission from referral Tanvir Ahmed task completion",
+      "timestamp": 1788007987654,
+      "referenceId": ""
+    },
+    {
+      "id": "tx_103",
+      "userId": "AP-77312",
+      "points": 1,
+      "type": "REWARD_CYCLE",
+      "title": "Rewarded Ad Completed",
+      "description": "Completed 5 quizzes cycle and verified Start.io video ad",
+      "timestamp": 1788004387654,
+      "referenceId": ""
+    }
+  ],
+  "withdrawals": [
+    {
+      "id": "WTH-984210",
+      "userId": "AP-10824",
+      "userName": "Sifat Islam",
+      "userEmail": "sifat@example.com",
+      "points": 50,
+      "amountCurrency": 10,
+      "currencySymbol": "৳",
+      "method": "BKASH",
+      "accountInfo": "01812345678",
+      "accountHolderName": "Sifat Islam",
+      "status": "PAID",
+      "requestDate": 1787770387654,
+      "processedDate": 1787856787654,
+      "adminNote": "Paid via bKash Merchant TrxID: BK7829103"
+    },
+    {
+      "id": "WTH-881294",
+      "userId": "AP-77312",
+      "userName": "Tanvir Ahmed",
+      "userEmail": "tanvir@example.com",
+      "points": 100,
+      "amountCurrency": 20,
+      "currencySymbol": "৳",
+      "method": "NAGAD",
+      "accountInfo": "01912345678",
+      "accountHolderName": "Tanvir Ahmed",
+      "status": "PENDING",
+      "requestDate": 1788015187654,
+      "processedDate": null,
+      "adminNote": ""
+    },
+    {
+      "id": "WTH-551982",
+      "userId": "AP-88421",
+      "userName": "Rahim Mia",
+      "userEmail": "rahim@example.com",
+      "points": 50,
+      "amountCurrency": 10,
+      "currencySymbol": "৳",
+      "method": "USDT_BEP20",
+      "accountInfo": "0x71C...829aB4",
+      "accountHolderName": "Rahim Wallet",
+      "status": "PROCESSING",
+      "requestDate": 1788000787654,
+      "processedDate": null,
+      "adminNote": "Queued for Binance BEP20 payout batch"
+    }
+  ],
+  "notifications": [
+    {
+      "id": "notif_1",
+      "title": "Welcome to Ads Pay 🎉",
+      "message": "Earn daily rewards by answering 5 easy quizzes and watching verified Start.io video ads!",
+      "type": "ANNOUNCEMENT",
+      "targetUserId": "ALL",
+      "timestamp": 1787856787654
+    }
+  ],
+  "appSettings": {
+    "appName": "Ads Pay",
+    "rewardCycleQuizzesCount": 5,
+    "quizTimerSeconds": 10,
+    "rewardPointsPerCycle": 1,
+    "pointMonetaryValue": 0.2,
+    "currencySymbol": "৳",
+    "referralCommissionPercent": 10,
+    "minWithdrawalPoints": 50,
+    "maxWithdrawalPoints": 10000,
+    "dailyTaskLimit": 50,
+    "hourlyTaskLimit": 10,
+    "startIoAppId": "207226080",
+    "isRegistrationEnabled": true,
+    "isLoginEnabled": true,
+    "isTaskSystemEnabled": true,
+    "isQuizEnabled": true,
+    "isBannerAdsEnabled": true,
+    "isRewardedAdsEnabled": true,
+    "isReferralEnabled": true,
+    "isWithdrawEnabled": true,
+    "isBkashEnabled": true,
+    "isNagadEnabled": true,
+    "isUsdtEnabled": true,
+    "isLeaderboardEnabled": true,
+    "isNotificationsEnabled": true,
+    "isMaintenanceMode": false,
+    "maintenanceMessage": "Ads Pay is currently undergoing scheduled system maintenance. Please check back shortly!",
+    "announcementText": "🔥 Welcome to Ads Pay! Complete 5 quizzes to unlock your Start.io rewarded ad and earn instant points.",
+    "telegramUrl": "https://t.me/adspayofficial",
+    "youtubeUrl": "https://youtube.com/@adspayofficial",
+    "supportContact": "support@adspay.app",
+    "aboutText": "Ads Pay is a transparent, trusted reward application where users complete quizzes, view Start.io rewarded video ads, and withdraw their earnings directly to bKash, Nagad, or BEP20 USDT.",
+    "howToWorkText": "1. Tap Start Task to begin a quiz session.\n2. Answer each quiz question and wait for the 10-second countdown timer.\n3. Complete 5 consecutive valid quizzes to unlock a Start.io Rewarded Video Ad.\n4. Watch the full rewarded ad to earn 1 point automatically.\n5. Invite your friends using your referral code to receive 10% lifetime commission.\n6. Request cashouts once you reach the 50 points minimum threshold."
+  },
+  "adminAuditLogs": [
+    {
+      "id": "log_001",
+      "adminId": "ADMIN-001",
+      "adminEmail": "admin@adspay.app",
+      "action": "SYSTEM_INITIALIZED",
+      "targetType": "SYSTEM",
+      "targetId": "GLOBAL",
+      "previousValue": "None",
+      "newValue": "Initialized with Start.io App ID 207226080",
+      "reason": "Master system provisioning",
+      "timestamp": 1787165587654
+    }
+  ]
+}

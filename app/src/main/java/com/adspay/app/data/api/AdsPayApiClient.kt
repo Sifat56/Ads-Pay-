@@ -18,6 +18,8 @@ object AdsPayApiClient {
         .readTimeout(20, TimeUnit.SECONDS)
         .writeTimeout(20, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
+        .followRedirects(false)
+        .followSslRedirects(false)
         .build()
 
     // --- Authentication ---
@@ -50,14 +52,27 @@ object AdsPayApiClient {
             val responseBody = response.body?.string() ?: ""
 
             if (!response.isSuccessful) {
-                val errorMsg = extractErrorMessage(responseBody, "Registration failed (${response.code})")
+                val errorMsg = extractErrorMessage(responseBody, "Registration failed (HTTP ${response.code})")
                 return Result.failure(Exception(errorMsg))
             }
 
-            val resJson = JSONObject(responseBody)
-            val userObj = resJson.getJSONObject("user")
-            val user = parseUserJson(userObj)
-            Result.success(user)
+            val trimmed = responseBody.trim()
+            if (!trimmed.startsWith("{")) {
+                return Result.failure(Exception("Invalid server response. Please verify backend API status."))
+            }
+
+            val resJson = JSONObject(trimmed)
+            if (resJson.has("user")) {
+                val userObj = resJson.getJSONObject("user")
+                val user = parseUserJson(userObj)
+                Result.success(user)
+            } else if (resJson.has("error")) {
+                Result.failure(Exception(resJson.getString("error")))
+            } else if (resJson.has("message")) {
+                Result.failure(Exception(resJson.getString("message")))
+            } else {
+                Result.failure(Exception("Registration response did not contain user data."))
+            }
         } catch (e: IOException) {
             Result.failure(Exception("Unable to reach server. Please check your internet connection."))
         } catch (e: Exception) {
@@ -82,18 +97,55 @@ object AdsPayApiClient {
             val responseBody = response.body?.string() ?: ""
 
             if (!response.isSuccessful) {
-                val errorMsg = extractErrorMessage(responseBody, "Login failed (${response.code})")
+                val errorMsg = extractErrorMessage(responseBody, "Login failed (HTTP ${response.code})")
                 return Result.failure(Exception(errorMsg))
+            }
+
+            val trimmed = responseBody.trim()
+            if (!trimmed.startsWith("{")) {
+                return Result.failure(Exception("Invalid server response. Please verify backend API status."))
+            }
+
+            val resJson = JSONObject(trimmed)
+            if (resJson.has("user")) {
+                val userObj = resJson.getJSONObject("user")
+                val user = parseUserJson(userObj)
+                Result.success(user)
+            } else if (resJson.has("error")) {
+                Result.failure(Exception(resJson.getString("error")))
+            } else if (resJson.has("message")) {
+                Result.failure(Exception(resJson.getString("message")))
+            } else {
+                Result.failure(Exception("Login response did not contain user data."))
+            }
+        } catch (e: IOException) {
+            Result.failure(Exception("Unable to reach server. Please check your internet connection."))
+        } catch (e: Exception) {
+            Result.failure(Exception(e.message ?: "Login error occurred."))
+        }
+    }
+
+    fun fetchUserProfile(userId: String): Result<User> {
+        return try {
+            val request = Request.Builder()
+                .url(ApiConfig.buildUrl("/api/app/user/profile?userId=${userId.trim()}"))
+                .get()
+                .header("Accept", "application/json")
+                .build()
+
+            val response = httpClient.newCall(request).execute()
+            val responseBody = response.body?.string() ?: ""
+
+            if (!response.isSuccessful) {
+                return Result.failure(Exception("Failed to fetch profile"))
             }
 
             val resJson = JSONObject(responseBody)
             val userObj = resJson.getJSONObject("user")
             val user = parseUserJson(userObj)
             Result.success(user)
-        } catch (e: IOException) {
-            Result.failure(Exception("Unable to reach server. Please check your internet connection."))
         } catch (e: Exception) {
-            Result.failure(Exception(e.message ?: "Login error occurred."))
+            Result.failure(e)
         }
     }
 
@@ -302,10 +354,17 @@ object AdsPayApiClient {
 
     private fun extractErrorMessage(responseBody: String, defaultMsg: String): String {
         return try {
-            val obj = JSONObject(responseBody)
-            if (obj.has("error")) obj.getString("error")
-            else if (obj.has("message")) obj.getString("message")
-            else defaultMsg
+            val trimmed = responseBody.trim()
+            if (trimmed.startsWith("{")) {
+                val obj = JSONObject(trimmed)
+                if (obj.has("error")) obj.getString("error")
+                else if (obj.has("message")) obj.getString("message")
+                else defaultMsg
+            } else if (trimmed.startsWith("<") || trimmed.contains("<!doctype", ignoreCase = true) || trimmed.contains("<html", ignoreCase = true)) {
+                "Backend server returned an HTML error page instead of JSON. Please verify backend server route and availability."
+            } else {
+                if (trimmed.isNotBlank() && trimmed.length < 150) trimmed else defaultMsg
+            }
         } catch (e: Exception) {
             defaultMsg
         }

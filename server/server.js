@@ -726,8 +726,8 @@ app.get('/api/admin/audit-logs', verifyAdmin, (req, res) => {
 // SHARED CLIENT APP REST API (For User App)
 // ==========================================
 
-// Public Config
-app.get('/api/app/config', (req, res) => {
+// Public Config & Settings
+app.get(['/api/app/config', '/api/app/settings'], (req, res) => {
   const settings = db.getSettings();
   res.json({
     appName: settings.appName,
@@ -883,7 +883,8 @@ app.post('/api/app/auth/register', (req, res) => {
   db.set('users', users);
 
   const { passwordHash: _, ...safeUser } = newUser;
-  res.json({ message: 'Registration successful!', user: safeUser });
+  res.setHeader('Content-Type', 'application/json');
+  res.json({ success: true, message: 'Registration successful!', user: safeUser });
 });
 
 // Start Task Attempt
@@ -1104,6 +1105,21 @@ app.post('/api/app/withdraw', (req, res) => {
   res.json({ message: 'Withdrawal submitted successfully!', withdrawal: request });
 });
 
+// User Profile / State Sync
+app.get('/api/app/user/profile', (req, res) => {
+  const { userId } = req.query;
+  if (!userId) return res.status(400).json({ error: 'User ID required' });
+
+  const users = db.get('users');
+  const user = users.find(u => u.id === userId || u.email.toLowerCase() === String(userId).toLowerCase() || u.phone === String(userId));
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  const { passwordHash, ...safeUser } = user;
+  res.json({ user: safeUser });
+});
+
 // User History
 app.get('/api/app/user/history', (req, res) => {
   const { userId } = req.query;
@@ -1135,6 +1151,14 @@ app.get(['/download/app-debug.apk', '/download/apk', '/api/download/apk', '/app-
   }
 
   res.status(404).json({ error: 'APK build file not found' });
+});
+
+// Catch-all for API endpoints to ensure they ALWAYS return JSON and never fall through to Vite/static HTML
+app.use('/api', (req, res) => {
+  res.status(404).json({
+    success: false,
+    error: `API endpoint '${req.method} ${req.originalUrl || req.url}' not found`
+  });
 });
 
 // ==========================================
