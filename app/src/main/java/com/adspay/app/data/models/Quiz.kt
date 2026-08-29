@@ -13,3 +13,12 @@ data class Quiz(
     val isActive: Boolean = true,
     val order: Int = 0
 )
+
+@Keep
+data class QuizCompletionResult(
+    val isCorrect: Boolean = false,
+    val correctIndex: Int = 0,
+    val currentCycleProgress: Int = 0,
+    val requiredCycleQuizzes: Int = 5,
+    val isRewardCycleReady: Boolean = false
+)

@@ -30,6 +30,7 @@ import com.adspay.app.data.NetworkUtils
 import com.adspay.app.data.models.User
 import com.adspay.app.data.repository.AdsPayRepository
 import com.adspay.app.ui.theme.*
+import kotlinx.coroutines.launch
 
 @Composable
 fun AuthScreen(

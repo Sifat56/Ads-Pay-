@@ -883,11 +883,3 @@ object AdsPayRepository {
         _auditLogs.update { listOf(log) + it }
     }
 }
-
-data class QuizCompletionResult(
-    val isCorrect: Boolean,
-    val correctIndex: Int,
-    val currentCycleProgress: Int,
-    val requiredCycleQuizzes: Int,
-    val isRewardCycleReady: Boolean
-)
