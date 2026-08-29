@@ -116,26 +116,45 @@ object StartIoAdManager {
                 }
 
                 override fun onFailedToReceiveAd(ad: Ad?) {
-                    isAdLoading = false
                     val rawError = ad?.errorMessage ?: "No ad fill currently available."
-                    val friendlyError = if (rawError.contains("204")) {
-                        "Ad inventory is currently filling from Start.io. Please retry in a few seconds."
-                    } else {
-                        rawError
-                    }
-                    Log.w(TAG, "Start.io Rewarded Ad load failed (Attempt ${retryCount + 1}): $rawError")
-                    _rewardedAdStatus.value = RewardedAdStatus.FAILED
-                    _adErrorMessage.value = friendlyError
-                    dispatchFailedCallbacks(friendlyError)
+                    Log.w(TAG, "Start.io Rewarded Video load returned: $rawError. Trying automatic fullscreen fallback...")
+                    
+                    // Fallback to AUTOMATIC mode (Fullpage/Interstitial/Video) if pure REWARDED_VIDEO has no fill (204)
+                    val fallbackAd = StartAppAd(context)
+                    fallbackAd.loadAd(StartAppAd.AdMode.AUTOMATIC, object : AdEventListener {
+                        override fun onReceiveAd(fallbackLoadedAd: Ad) {
+                            isAdLoading = false
+                            retryCount = 0
+                            rewardedAd = fallbackAd
+                            Log.d(TAG, "Start.io Fullscreen Fallback Ad cached and ready to display.")
+                            _rewardedAdStatus.value = RewardedAdStatus.READY
+                            _adErrorMessage.value = null
+                            dispatchLoadedCallbacks()
+                        }
 
-                    // Auto retry with exponential backoff if not exceeded max retries
-                    if (retryCount < MAX_RETRIES) {
-                        retryCount++
-                        val delayMs = (retryCount * 3000L).coerceAtLeast(3000L)
-                        mainHandler.postDelayed({
-                            loadRewardedAd(appContext)
-                        }, delayMs)
-                    }
+                        override fun onFailedToReceiveAd(fallbackAdFailed: Ad?) {
+                            isAdLoading = false
+                            val fallbackErr = fallbackAdFailed?.errorMessage ?: rawError
+                            val friendlyError = if (fallbackErr.contains("204") || rawError.contains("204")) {
+                                "Ad inventory is currently filling from Start.io. Please retry in a few seconds."
+                            } else {
+                                fallbackErr
+                            }
+                            Log.w(TAG, "Start.io Fallback Ad load failed: $fallbackErr")
+                            _rewardedAdStatus.value = RewardedAdStatus.FAILED
+                            _adErrorMessage.value = friendlyError
+                            dispatchFailedCallbacks(friendlyError)
+
+                            // Auto retry with exponential backoff if not exceeded max retries
+                            if (retryCount < MAX_RETRIES) {
+                                retryCount++
+                                val delayMs = (retryCount * 3000L).coerceAtLeast(3000L)
+                                mainHandler.postDelayed({
+                                    loadRewardedAd(appContext)
+                                }, delayMs)
+                            }
+                        }
+                    })
                 }
             })
         } catch (e: Exception) {
@@ -229,9 +248,20 @@ object StartIoAdManager {
                 // Immediately warm-up next ad for next cycle
                 loadRewardedAd(activity.applicationContext)
 
-                if (!hasCompletedVideo.get()) {
-                    mainHandler.post {
-                        onAdClosedWithoutCompletion()
+                // If video callback fired or fullscreen ad was successfully viewed to completion
+                if (hasCompletedVideo.get() || hasRewarded.get()) {
+                    // Already awarded
+                } else {
+                    // If it was a fullscreen fallback ad successfully displayed and closed, grant reward
+                    if (hasRewarded.compareAndSet(false, true)) {
+                        mainHandler.post {
+                            _rewardedAdStatus.value = RewardedAdStatus.COMPLETED
+                            onVideoCompleted()
+                        }
+                    } else {
+                        mainHandler.post {
+                            onAdClosedWithoutCompletion()
+                        }
                     }
                 }
             }
