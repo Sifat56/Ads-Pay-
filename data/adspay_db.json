@@ -7,7 +7,7 @@
       "passwordHash": "$2b$10$rdgYjJs1ZucpTcbySNwF6.oHE7IM6Y2wLj3qUXUxrFx2OJaAHvaJe",
       "role": "SUPER_ADMIN",
       "createdAt": 1785437587653,
-      "lastLoginAt": 1788029587653
+      "lastLoginAt": 1788038504201
     }
   ],
   "users": [
@@ -186,6 +186,27 @@
       "isReferralDisabled": false,
       "createdAt": 1788033865655,
       "lastActiveAt": 1788033868741
+    },
+    {
+      "id": "AP-70007",
+      "name": "Rakib Hasan",
+      "email": "rakib@example.com",
+      "phone": "+8801711223344",
+      "passwordHash": "$2b$10$zdLdEVWG5QZJtngj4dZ/uuq8KXVS7tNQTecxNi6WGELl2Mop0xuNO",
+      "points": 0,
+      "totalEarned": 0,
+      "totalWithdrawn": 0,
+      "completedQuizzesCount": 0,
+      "currentCycleQuizzes": 0,
+      "referralCode": "PAY1831",
+      "referredBy": null,
+      "isBlocked": false,
+      "isTaskDisabled": false,
+      "isWithdrawDisabled": false,
+      "isReferralDisabled": false,
+      "role": "USER",
+      "createdAt": 1788038495044,
+      "lastActiveAt": 1788038514038
     }
   ],
   "quizzes": [
@@ -448,6 +469,18 @@
     "howToWorkText": "1. Tap Start Task to begin a quiz session.\n2. Answer each quiz question and wait for the 10-second countdown timer.\n3. Complete 5 consecutive valid quizzes to unlock a Start.io Rewarded Video Ad.\n4. Watch the full rewarded ad to earn 1 point automatically.\n5. Invite your friends using your referral code to receive 10% lifetime commission.\n6. Request cashouts once you reach the 50 points minimum threshold."
   },
   "adminAuditLogs": [
+    {
+      "id": "log_ya815s3",
+      "adminId": "ADMIN-001",
+      "adminEmail": "admin@adspay.app",
+      "action": "ADMIN_LOGIN",
+      "targetType": "AUTH",
+      "targetId": "ADMIN-001",
+      "previousValue": "",
+      "newValue": "Logged In",
+      "reason": "Successful web admin panel authentication",
+      "timestamp": 1788038504202
+    },
     {
       "id": "log_001",
       "adminId": "ADMIN-001",

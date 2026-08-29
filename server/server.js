@@ -267,7 +267,7 @@ app.get('/api/admin/dashboard', verifyAdmin, (req, res) => {
     methodStats,
     recentWithdrawals: withdrawals.slice(0, 5),
     recentTransactions: transactions.slice(0, 8),
-    recentUsers: users.slice(-5).reverse()
+    recentUsers: [...users].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 5)
   });
 });
 
@@ -303,11 +303,11 @@ app.get('/api/admin/users', verifyAdmin, (req, res) => {
 
   // Sort
   if (sort === 'POINTS_DESC') {
-    users.sort((a, b) => b.points - a.points);
+    users.sort((a, b) => (b.points || 0) - (a.points || 0));
   } else if (sort === 'EARNED_DESC') {
-    users.sort((a, b) => b.totalEarned - a.totalEarned);
+    users.sort((a, b) => (b.totalEarned || 0) - (a.totalEarned || 0));
   } else {
-    users.sort((a, b) => b.createdAt - a.createdAt);
+    users.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   }
 
   res.json({
@@ -875,6 +875,7 @@ app.post('/api/app/auth/register', (req, res) => {
     isTaskDisabled: false,
     isWithdrawDisabled: false,
     isReferralDisabled: false,
+    role: 'USER',
     createdAt: Date.now(),
     lastActiveAt: Date.now()
   };

@@ -363,11 +363,13 @@ object AdsPayRepository {
             // If the server explicitly rejected the credentials or suspended the account:
             if (errorMsg.contains("suspended", ignoreCase = true) ||
                 errorMsg.contains("disabled", ignoreCase = true) ||
-                errorMsg.contains("paused", ignoreCase = true)) {
+                errorMsg.contains("paused", ignoreCase = true) ||
+                errorMsg.contains("incorrect password", ignoreCase = true) ||
+                errorMsg.contains("not found", ignoreCase = true)) {
                 return@withContext Result.failure(serverException ?: Exception(errorMsg))
             }
 
-            // Standalone local account verification
+            // Standalone local account fallback ONLY if local record matches and server was unreachable
             val localUser = _userList.value.find { 
                 it.email.equals(cleanQuery, ignoreCase = true) || it.phone == cleanPhone 
             }
@@ -380,16 +382,7 @@ object AdsPayRepository {
                 }
                 localUser
             } else {
-                if (errorMsg.isNotBlank() && 
-                    !errorMsg.contains("reach server", ignoreCase = true) && 
-                    !errorMsg.contains("Invalid server", ignoreCase = true) &&
-                    !errorMsg.contains("HTTP 302", ignoreCase = true) &&
-                    !errorMsg.contains("HTTP 404", ignoreCase = true) &&
-                    !errorMsg.contains("HTML error", ignoreCase = true)) {
-                    return@withContext Result.failure(Exception(errorMsg))
-                } else {
-                    return@withContext Result.failure(Exception("Account not found. Please Sign Up to create your account."))
-                }
+                return@withContext Result.failure(serverException ?: Exception("Account not found. Please Sign Up to create your account."))
             }
         }
 
@@ -401,7 +394,7 @@ object AdsPayRepository {
         val pwdHash = hashPassword(password)
         userCredentials[user.id] = pwdHash
 
-        // Update local state flows and cache
+        // Update local state flows and cache with authoritative server user
         _userList.update { list ->
             val filtered = list.filter { it.id != user.id }
             filtered + user
@@ -440,7 +433,7 @@ object AdsPayRepository {
             return@withContext Result.failure(Exception("An account with this phone number already exists. Please log in."))
         }
 
-        // Call Server Registration API
+        // Call Server Registration API (Authoritative backend storage)
         val serverResult = AdsPayApiClient.register(
             name = name,
             email = cleanEmail,
@@ -449,43 +442,18 @@ object AdsPayRepository {
             referralCode = referralCode?.ifBlank { null }
         )
 
-        val newUser = if (serverResult.isSuccess) {
-            serverResult.getOrThrow()
-        } else {
-            val serverException = serverResult.exceptionOrNull()
-            val errorMsg = serverException?.message ?: ""
-
-            // If the server explicitly returned a domain error (e.g. duplicate email/bad referral):
-            if (errorMsg.contains("already exists", ignoreCase = true) ||
-                errorMsg.contains("referral code", ignoreCase = true) ||
-                errorMsg.contains("closed", ignoreCase = true) ||
-                errorMsg.contains("paused", ignoreCase = true) ||
-                errorMsg.contains("suspended", ignoreCase = true)) {
-                return@withContext Result.failure(serverException ?: Exception(errorMsg))
-            }
-
-            // Standalone local account generation
-            User(
-                id = "AP-${Random.nextInt(10000, 99999)}",
-                name = name.trim(),
-                email = cleanEmail,
-                phone = cleanPhone,
-                points = 0.0,
-                totalEarned = 0.0,
-                totalWithdrawn = 0.0,
-                completedQuizzesCount = 0,
-                currentCycleQuizzes = 0,
-                referralCode = "PAY${Random.nextInt(1000, 9999)}",
-                referredBy = referralCode?.trim()?.uppercase()?.ifBlank { null },
-                role = UserRole.USER
-            )
+        if (serverResult.isFailure) {
+            val serverException = serverResult.exceptionOrNull() ?: Exception("Server registration failed. Please check network connection.")
+            return@withContext Result.failure(serverException)
         }
+
+        val newUser = serverResult.getOrThrow()
 
         // Store local credentials
         val pwdHash = hashPassword(password)
         userCredentials[newUser.id] = pwdHash
 
-        // Update memory flow & local persistence
+        // Update memory flow & local persistence with verified server user
         _userList.update { list ->
             val filtered = list.filter { it.id != newUser.id }
             filtered + newUser
