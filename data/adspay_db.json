@@ -146,6 +146,26 @@
       "isReferralDisabled": false,
       "createdAt": 1788031732774,
       "lastActiveAt": 1788031732774
+    },
+    {
+      "id": "AP-15970",
+      "name": "Audit User",
+      "email": "audit@adspay.com",
+      "phone": "01999888777",
+      "passwordHash": "$2b$10$iYWV4Z5w2NPDTsqlJjhjI.0O8FWqnyHSlkMm3JvnvlCwH2sP3ovGi",
+      "points": 0,
+      "totalEarned": 0,
+      "totalWithdrawn": 0,
+      "completedQuizzesCount": 0,
+      "currentCycleQuizzes": 0,
+      "referralCode": "PAY8848",
+      "referredBy": null,
+      "isBlocked": false,
+      "isTaskDisabled": false,
+      "isWithdrawDisabled": false,
+      "isReferralDisabled": false,
+      "createdAt": 1788032678854,
+      "lastActiveAt": 1788032682459
     }
   ],
   "quizzes": [
@@ -270,7 +290,16 @@
       "order": 8
     }
   ],
-  "taskAttempts": [],
+  "taskAttempts": [
+    {
+      "id": "att_6h80onf",
+      "userId": "AP-15970",
+      "quizId": "q1",
+      "startTime": 1788032690350,
+      "cycleIndex": 1,
+      "token": "vwi8f4ixe7l"
+    }
+  ],
   "rewardTransactions": [
     {
       "id": "tx_101",

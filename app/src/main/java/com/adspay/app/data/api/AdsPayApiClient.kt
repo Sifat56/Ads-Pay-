@@ -137,10 +137,19 @@ object AdsPayApiClient {
             val responseBody = response.body?.string() ?: ""
 
             if (!response.isSuccessful) {
-                return Result.failure(Exception("Failed to fetch profile"))
+                val errorMsg = extractErrorMessage(responseBody, "Failed to fetch profile")
+                return Result.failure(Exception(errorMsg))
             }
 
-            val resJson = JSONObject(responseBody)
+            val trimmed = responseBody.trim()
+            if (!trimmed.startsWith("{")) {
+                return Result.failure(Exception("Invalid server response. Please verify backend API status."))
+            }
+
+            val resJson = JSONObject(trimmed)
+            if (!resJson.has("user")) {
+                return Result.failure(Exception("User profile data not found in server response."))
+            }
             val userObj = resJson.getJSONObject("user")
             val user = parseUserJson(userObj)
             Result.success(user)
@@ -163,10 +172,16 @@ object AdsPayApiClient {
             val responseBody = response.body?.string() ?: ""
 
             if (!response.isSuccessful) {
-                return Result.failure(Exception("Failed to fetch settings"))
+                val errorMsg = extractErrorMessage(responseBody, "Failed to fetch settings")
+                return Result.failure(Exception(errorMsg))
             }
 
-            val obj = JSONObject(responseBody)
+            val trimmed = responseBody.trim()
+            if (!trimmed.startsWith("{")) {
+                return Result.failure(Exception("Invalid settings response from server."))
+            }
+
+            val obj = JSONObject(trimmed)
             val settings = AppSettings(
                 rewardCycleQuizzesCount = obj.optInt("rewardCycleQuizzesCount", 5),
                 quizTimerSeconds = obj.optInt("quizTimerSeconds", 10),
@@ -230,7 +245,17 @@ object AdsPayApiClient {
                 return Result.failure(Exception(errorMsg))
             }
 
-            val resJson = JSONObject(responseBody)
+            val trimmed = responseBody.trim()
+            if (!trimmed.startsWith("{")) {
+                return Result.failure(Exception("Invalid server response when starting task."))
+            }
+
+            val resJson = JSONObject(trimmed)
+            if (!resJson.has("attempt")) {
+                val msg = resJson.optString("error", resJson.optString("message", "Task attempt creation failed"))
+                return Result.failure(Exception(msg))
+            }
+
             val attObj = resJson.getJSONObject("attempt")
             val attempt = TaskAttempt(
                 id = attObj.optString("id", ""),
@@ -267,7 +292,12 @@ object AdsPayApiClient {
                 return Result.failure(Exception(errorMsg))
             }
 
-            val resJson = JSONObject(responseBody)
+            val trimmed = responseBody.trim()
+            if (!trimmed.startsWith("{")) {
+                return Result.failure(Exception("Invalid server response when completing task."))
+            }
+
+            val resJson = JSONObject(trimmed)
             val result = QuizCompletionResult(
                 isCorrect = resJson.optBoolean("isCorrect", false),
                 correctIndex = resJson.optInt("correctIndex", 0),
@@ -301,7 +331,12 @@ object AdsPayApiClient {
                 return Result.failure(Exception(errorMsg))
             }
 
-            val resJson = JSONObject(responseBody)
+            val trimmed = responseBody.trim()
+            if (!trimmed.startsWith("{")) {
+                return Result.failure(Exception("Invalid server response when claiming reward."))
+            }
+
+            val resJson = JSONObject(trimmed)
             val rewardPoints = resJson.optDouble("rewardPoints", 1.0)
             Result.success(rewardPoints)
         } catch (e: Exception) {
@@ -341,7 +376,17 @@ object AdsPayApiClient {
                 return Result.failure(Exception(errorMsg))
             }
 
-            val resJson = JSONObject(responseBody)
+            val trimmed = responseBody.trim()
+            if (!trimmed.startsWith("{")) {
+                return Result.failure(Exception("Invalid server response when submitting withdrawal."))
+            }
+
+            val resJson = JSONObject(trimmed)
+            if (!resJson.has("withdrawal")) {
+                val msg = resJson.optString("error", resJson.optString("message", "Withdrawal submission failed"))
+                return Result.failure(Exception(msg))
+            }
+
             val wthObj = resJson.getJSONObject("withdrawal")
             val item = parseWithdrawalJson(wthObj)
             Result.success(item)
