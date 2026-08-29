@@ -702,7 +702,6 @@ object AdsPayRepository {
                 userId = user.id,
                 userName = user.name,
                 userEmail = user.email,
-                userPhone = user.phone,
                 method = method,
                 points = points,
                 amountCurrency = amountCurrency,
