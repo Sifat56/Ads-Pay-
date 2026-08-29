@@ -36,6 +36,9 @@ object StartIoAdManager {
     private const val MAX_RETRIES = 3
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    private val pendingLoadedCallbacks = mutableListOf<() -> Unit>()
+    private val pendingFailedCallbacks = mutableListOf<(String) -> Unit>()
+
     private val _rewardedAdStatus = MutableStateFlow(RewardedAdStatus.IDLE)
     val rewardedAdStatus: StateFlow<RewardedAdStatus> = _rewardedAdStatus.asStateFlow()
 
@@ -64,6 +67,7 @@ object StartIoAdManager {
         return rewardedAd?.isReady == true
     }
 
+    @Synchronized
     fun loadRewardedAd(
         context: Context,
         onLoaded: (() -> Unit)? = null,
@@ -73,15 +77,22 @@ object StartIoAdManager {
             initialize(context)
         }
 
+        if (onLoaded != null) {
+            pendingLoadedCallbacks.add(onLoaded)
+        }
+        if (onFailed != null) {
+            pendingFailedCallbacks.add(onFailed)
+        }
+
         if (rewardedAd?.isReady == true) {
             _rewardedAdStatus.value = RewardedAdStatus.READY
             _adErrorMessage.value = null
-            onLoaded?.invoke()
+            dispatchLoadedCallbacks()
             return
         }
 
         if (isAdLoading) {
-            // Already loading in progress
+            // Already loading in progress, callbacks have been queued
             return
         }
 
@@ -91,7 +102,7 @@ object StartIoAdManager {
             _adErrorMessage.value = null
 
             val appContext = context.applicationContext
-            val startAppAd = StartAppAd(appContext)
+            val startAppAd = StartAppAd(context)
             rewardedAd = startAppAd
 
             startAppAd.loadAd(StartAppAd.AdMode.REWARDED_VIDEO, object : AdEventListener {
@@ -101,16 +112,21 @@ object StartIoAdManager {
                     Log.d(TAG, "Start.io Rewarded Video Ad cached and ready to display.")
                     _rewardedAdStatus.value = RewardedAdStatus.READY
                     _adErrorMessage.value = null
-                    onLoaded?.invoke()
+                    dispatchLoadedCallbacks()
                 }
 
                 override fun onFailedToReceiveAd(ad: Ad?) {
                     isAdLoading = false
-                    val errorMsg = ad?.errorMessage ?: "Ad server response timeout or no fill."
-                    Log.w(TAG, "Start.io Rewarded Ad load failed (Attempt ${retryCount + 1}): $errorMsg")
+                    val rawError = ad?.errorMessage ?: "No ad fill currently available."
+                    val friendlyError = if (rawError.contains("204")) {
+                        "Ad inventory is currently filling from Start.io. Please retry in a few seconds."
+                    } else {
+                        rawError
+                    }
+                    Log.w(TAG, "Start.io Rewarded Ad load failed (Attempt ${retryCount + 1}): $rawError")
                     _rewardedAdStatus.value = RewardedAdStatus.FAILED
-                    _adErrorMessage.value = errorMsg
-                    onFailed?.invoke(errorMsg)
+                    _adErrorMessage.value = friendlyError
+                    dispatchFailedCallbacks(friendlyError)
 
                     // Auto retry with exponential backoff if not exceeded max retries
                     if (retryCount < MAX_RETRIES) {
@@ -127,7 +143,27 @@ object StartIoAdManager {
             Log.e(TAG, "Exception during loadRewardedAd: ${e.message}", e)
             _rewardedAdStatus.value = RewardedAdStatus.FAILED
             _adErrorMessage.value = e.message ?: "Failed to load ad"
-            onFailed?.invoke(e.message ?: "Unknown error")
+            dispatchFailedCallbacks(e.message ?: "Failed to load ad")
+        }
+    }
+
+    @Synchronized
+    private fun dispatchLoadedCallbacks() {
+        val callbacks = ArrayList(pendingLoadedCallbacks)
+        pendingLoadedCallbacks.clear()
+        pendingFailedCallbacks.clear()
+        mainHandler.post {
+            callbacks.forEach { it.invoke() }
+        }
+    }
+
+    @Synchronized
+    private fun dispatchFailedCallbacks(errorMsg: String) {
+        val callbacks = ArrayList(pendingFailedCallbacks)
+        pendingLoadedCallbacks.clear()
+        pendingFailedCallbacks.clear()
+        mainHandler.post {
+            callbacks.forEach { it.invoke(errorMsg) }
         }
     }
 
@@ -138,7 +174,7 @@ object StartIoAdManager {
         onFailedToShow: (String) -> Unit = {}
     ) {
         val currentAd = rewardedAd
-        
+
         // If ad is not ready yet, perform an immediate fast-load and then show
         if (currentAd == null || !currentAd.isReady) {
             Log.d(TAG, "Rewarded Ad not cached yet. Initiating priority load...")

@@ -3,11 +3,17 @@ package com.adspay.app.data.repository
 import android.content.Context
 import android.content.SharedPreferences
 import com.adspay.app.data.NetworkUtils
+import com.adspay.app.data.api.AdsPayApiClient
+import com.adspay.app.data.api.ApiConfig
 import com.adspay.app.data.models.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -62,6 +68,20 @@ object AdsPayRepository {
         appContext = context.applicationContext
         prefs = appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         loadStoredData()
+        syncRemoteSettings()
+    }
+
+    fun syncRemoteSettings() {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val res = AdsPayApiClient.fetchSettings()
+                res.onSuccess { newSettings ->
+                    _appSettings.value = newSettings
+                }
+            } catch (e: Exception) {
+                // Silently retain fallback settings
+            }
+        }
     }
 
     private fun hashPassword(password: String): String {
@@ -293,122 +313,100 @@ object AdsPayRepository {
     }
 
     // --- Authentication ---
-    fun login(emailOrPhone: String, password: String): Result<User> {
+    suspend fun login(emailOrPhone: String, password: String): Result<User> = withContext(Dispatchers.IO) {
         // Enforce Internet check
         if (!NetworkUtils.isInternetAvailable(appContext)) {
-            return Result.failure(Exception(NetworkUtils.ERROR_NO_INTERNET))
+            return@withContext Result.failure(Exception(NetworkUtils.ERROR_NO_INTERNET))
         }
 
         if (!_appSettings.value.isLoginEnabled) {
-            return Result.failure(Exception("User login is currently disabled by Admin."))
+            return@withContext Result.failure(Exception("User login is currently disabled by Admin."))
         }
 
         if (emailOrPhone.isBlank() || password.isBlank()) {
-            return Result.failure(Exception("Please enter your email/phone and password."))
+            return@withContext Result.failure(Exception("Please enter your email/phone and password."))
         }
 
-        val cleanInput = emailOrPhone.trim().lowercase()
-        val cleanPhone = emailOrPhone.trim()
+        // Call Server Login API
+        val serverResult = AdsPayApiClient.login(
+            emailOrPhone = emailOrPhone.trim(),
+            password = password
+        )
 
-        val user = _userList.value.find {
-            it.email.lowercase() == cleanInput || it.phone == cleanPhone
+        if (serverResult.isFailure) {
+            return@withContext Result.failure(serverResult.exceptionOrNull() ?: Exception("Login failed on server"))
         }
 
-        if (user == null) {
-            return Result.failure(Exception("No account found with this email or phone. Please Sign Up."))
-        }
+        val user = serverResult.getOrThrow()
 
         if (user.isBlocked) {
-            return Result.failure(Exception("Your account has been suspended by administration."))
+            return@withContext Result.failure(Exception("Your account has been suspended by administration."))
         }
 
-        // Verify password hash
-        val storedHash = userCredentials[user.id]
-        val inputHash = hashPassword(password)
-        if (storedHash != null && storedHash != inputHash) {
-            return Result.failure(Exception("Incorrect password. Please check and try again."))
-        }
+        // Store local password hash for session verification
+        val pwdHash = hashPassword(password)
+        userCredentials[user.id] = pwdHash
 
+        // Update local state flows and cache
+        _userList.update { list ->
+            val filtered = list.filter { it.id != user.id }
+            filtered + user
+        }
         _currentUser.value = user
         persistData()
-        return Result.success(user)
+
+        return@withContext Result.success(user)
     }
 
-    fun register(name: String, email: String, phone: String, password: String, referralCode: String?): Result<User> {
+    suspend fun register(name: String, email: String, phone: String, password: String, referralCode: String?): Result<User> = withContext(Dispatchers.IO) {
         // Enforce Internet check
         if (!NetworkUtils.isInternetAvailable(appContext)) {
-            return Result.failure(Exception(NetworkUtils.ERROR_NO_INTERNET))
+            return@withContext Result.failure(Exception(NetworkUtils.ERROR_NO_INTERNET))
         }
 
         if (!_appSettings.value.isRegistrationEnabled) {
-            return Result.failure(Exception("Registration is currently paused by Administrator."))
+            return@withContext Result.failure(Exception("Registration is currently paused by Administrator."))
         }
 
         if (name.isBlank() || email.isBlank() || phone.isBlank() || password.isBlank()) {
-            return Result.failure(Exception("All fields (Name, Email, Phone, Password) are required."))
+            return@withContext Result.failure(Exception("All fields (Name, Email, Phone, Password) are required."))
         }
 
         if (password.length < 6) {
-            return Result.failure(Exception("Password must be at least 6 characters long."))
+            return@withContext Result.failure(Exception("Password must be at least 6 characters long."))
         }
 
         val cleanEmail = email.trim().lowercase()
         val cleanPhone = phone.trim()
 
-        if (_userList.value.any { it.email.lowercase() == cleanEmail }) {
-            return Result.failure(Exception("An account with this email already exists. Please login."))
-        }
-
-        if (_userList.value.any { it.phone.trim() == cleanPhone }) {
-            return Result.failure(Exception("An account with this phone number already exists. Please login."))
-        }
-
-        var referrerUser: User? = null
-        if (!referralCode.isNullOrBlank()) {
-            val code = referralCode.trim().uppercase()
-            referrerUser = _userList.value.find { it.referralCode.uppercase() == code }
-            if (referrerUser == null) {
-                return Result.failure(Exception("Invalid referral code. Please check or leave empty."))
-            }
-        }
-
-        // Generate unique user ID (e.g. AP-48291)
-        var newUserId = "AP-" + Random.nextInt(10000, 99999)
-        while (_userList.value.any { it.id == newUserId }) {
-            newUserId = "AP-" + Random.nextInt(10000, 99999)
-        }
-
-        // Generate unique referral code (e.g. PAY4829)
-        var newRefCode = "PAY" + Random.nextInt(1000, 9999)
-        while (_userList.value.any { it.referralCode == newRefCode }) {
-            newRefCode = "PAY" + Random.nextInt(1000, 9999)
-        }
-
-        // Hash and store password securely
-        val pwdHash = hashPassword(password)
-        userCredentials[newUserId] = pwdHash
-
-        // Each user starts strictly with 0 points, 0 tasks, 0/5 cycle
-        val newUser = User(
-            id = newUserId,
-            name = name.trim(),
+        // Call Server Registration API
+        val serverResult = AdsPayApiClient.register(
+            name = name,
             email = cleanEmail,
             phone = cleanPhone,
-            points = 0.0,
-            totalEarned = 0.0,
-            totalWithdrawn = 0.0,
-            completedQuizzesCount = 0,
-            currentCycleQuizzes = 0,
-            referralCode = newRefCode,
-            referredBy = referrerUser?.referralCode,
-            role = UserRole.USER
+            password = password,
+            referralCode = referralCode?.ifBlank { null }
         )
 
-        _userList.update { it + newUser }
+        if (serverResult.isFailure) {
+            return@withContext Result.failure(serverResult.exceptionOrNull() ?: Exception("Registration failed on server"))
+        }
+
+        val newUser = serverResult.getOrThrow()
+
+        // Store local credentials
+        val pwdHash = hashPassword(password)
+        userCredentials[newUser.id] = pwdHash
+
+        // Update memory flow & local persistence
+        _userList.update { list ->
+            val filtered = list.filter { it.id != newUser.id }
+            filtered + newUser
+        }
         _currentUser.value = newUser
         persistData()
 
-        return Result.success(newUser)
+        return@withContext Result.success(newUser)
     }
 
     fun logout() {
@@ -425,60 +423,67 @@ object AdsPayRepository {
     }
 
     // --- Task & Quiz Management ---
-    fun startTaskAttempt(quizId: String): Result<TaskAttempt> {
+    suspend fun startTaskAttempt(quizId: String): Result<TaskAttempt> = withContext(Dispatchers.IO) {
         // Enforce Internet check
         if (!NetworkUtils.isInternetAvailable(appContext)) {
-            return Result.failure(Exception(NetworkUtils.ERROR_NO_INTERNET))
+            return@withContext Result.failure(Exception(NetworkUtils.ERROR_NO_INTERNET))
         }
 
-        val user = _currentUser.value ?: return Result.failure(Exception("Not authenticated. Please log in."))
+        val user = _currentUser.value ?: return@withContext Result.failure(Exception("Not authenticated. Please log in."))
         if (user.isBlocked || user.isTaskDisabled) {
-            return Result.failure(Exception("Task access is restricted for this account."))
+            return@withContext Result.failure(Exception("Task access is restricted for this account."))
         }
         if (!_appSettings.value.isTaskSystemEnabled) {
-            return Result.failure(Exception("Task system is currently disabled by Admin."))
+            return@withContext Result.failure(Exception("Task system is currently disabled by Admin."))
         }
 
-        val attempt = TaskAttempt(
-            id = UUID.randomUUID().toString(),
-            userId = user.id,
-            quizId = quizId,
-            startTime = System.currentTimeMillis(),
-            cycleIndex = user.currentCycleQuizzes + 1,
-            token = UUID.randomUUID().toString()
-        )
+        val apiRes = AdsPayApiClient.startTask(user.id, quizId)
+        val attempt = if (apiRes.isSuccess) {
+            apiRes.getOrThrow()
+        } else {
+            TaskAttempt(
+                id = UUID.randomUUID().toString(),
+                userId = user.id,
+                quizId = quizId,
+                startTime = System.currentTimeMillis(),
+                cycleIndex = user.currentCycleQuizzes + 1,
+                token = UUID.randomUUID().toString()
+            )
+        }
+
         activeAttempts[attempt.id] = attempt
-        return Result.success(attempt)
+        return@withContext Result.success(attempt)
     }
 
-    fun completeQuiz(attemptId: String, selectedOption: Int): Result<QuizCompletionResult> {
+    suspend fun completeQuiz(attemptId: String, selectedOption: Int): Result<QuizCompletionResult> = withContext(Dispatchers.IO) {
         // Enforce Internet check
         if (!NetworkUtils.isInternetAvailable(appContext)) {
-            return Result.failure(Exception(NetworkUtils.ERROR_NO_INTERNET))
+            return@withContext Result.failure(Exception(NetworkUtils.ERROR_NO_INTERNET))
         }
 
-        val attempt = activeAttempts[attemptId] ?: return Result.failure(Exception("Invalid or expired task attempt."))
-        val user = _currentUser.value ?: return Result.failure(Exception("User not authenticated."))
-        val quiz = _quizzes.value.find { it.id == attempt.quizId } ?: return Result.failure(Exception("Quiz question not found."))
+        val attempt = activeAttempts[attemptId] ?: return@withContext Result.failure(Exception("Invalid or expired task attempt."))
+        val user = _currentUser.value ?: return@withContext Result.failure(Exception("User not authenticated."))
+        val quiz = _quizzes.value.find { it.id == attempt.quizId } ?: return@withContext Result.failure(Exception("Quiz question not found."))
 
         val timeElapsed = System.currentTimeMillis() - attempt.startTime
         val requiredTimeMs = (quiz.timerSeconds * 1000L) - 1000L // 1s tolerance for network latency
 
         if (timeElapsed < requiredTimeMs) {
-            return Result.failure(Exception("Anti-fraud validation failed: Quiz completed too quickly ($timeElapsed ms). You must wait for the 10s timer."))
+            return@withContext Result.failure(Exception("Anti-fraud validation failed: Quiz completed too quickly ($timeElapsed ms). You must wait for the 10s timer."))
         }
 
         val isCorrect = selectedOption == quiz.correctOptionIndex
-        attempt.copy(
-            completedTime = System.currentTimeMillis(),
-            selectedOptionIndex = selectedOption,
-            isCorrect = isCorrect,
-            isVerified = true
-        )
         activeAttempts.remove(attemptId)
 
+        // Call server to complete task
+        val serverRes = AdsPayApiClient.completeTask(attemptId, selectedOption)
+
         val requiredCount = _appSettings.value.rewardCycleQuizzesCount
-        val newCycleCount = (user.currentCycleQuizzes + 1).coerceAtMost(requiredCount)
+        val newCycleCount = if (serverRes.isSuccess) {
+            serverRes.getOrThrow().currentCycleProgress
+        } else {
+            (user.currentCycleQuizzes + 1).coerceAtMost(requiredCount)
+        }
         val isRewardCycleReady = newCycleCount >= requiredCount
 
         // Quizzes alone do NOT add points; progress increases from 1/5 up to 5/5
@@ -491,7 +496,7 @@ object AdsPayRepository {
         updateUserInList(_currentUser.value)
         persistData()
 
-        return Result.success(
+        return@withContext Result.success(
             QuizCompletionResult(
                 isCorrect = isCorrect,
                 correctIndex = quiz.correctOptionIndex,
@@ -502,29 +507,32 @@ object AdsPayRepository {
         )
     }
 
-    fun verifyAndClaimRewardedAd(): Result<Double> {
+    suspend fun verifyAndClaimRewardedAd(): Result<Double> = withContext(Dispatchers.IO) {
         // Enforce Internet check
         if (!NetworkUtils.isInternetAvailable(appContext)) {
-            return Result.failure(Exception(NetworkUtils.ERROR_NO_INTERNET))
+            return@withContext Result.failure(Exception(NetworkUtils.ERROR_NO_INTERNET))
         }
 
-        val user = _currentUser.value ?: return Result.failure(Exception("User not authenticated."))
+        val user = _currentUser.value ?: return@withContext Result.failure(Exception("User not authenticated."))
         if (user.isBlocked || user.isTaskDisabled) {
-            return Result.failure(Exception("Account restricted from claiming rewards."))
+            return@withContext Result.failure(Exception("Account restricted from claiming rewards."))
         }
 
         val requiredCount = _appSettings.value.rewardCycleQuizzesCount
         if (user.currentCycleQuizzes < requiredCount) {
-            return Result.failure(Exception("Reward cycle requirement not met (${user.currentCycleQuizzes}/$requiredCount completed)."))
+            return@withContext Result.failure(Exception("Reward cycle requirement not met (${user.currentCycleQuizzes}/$requiredCount completed)."))
         }
 
         val rewardPoints = _appSettings.value.rewardPointsPerCycle
 
         // Server-side / verified atomic balance update: +1 Point and Reset cycle to 0/5
+        val serverRes = AdsPayApiClient.claimReward(user.id)
+        val pointsAwarded = if (serverRes.isSuccess) serverRes.getOrThrow() else rewardPoints
+
         _currentUser.update { current ->
             current?.copy(
-                points = current.points + rewardPoints,
-                totalEarned = current.totalEarned + rewardPoints,
+                points = current.points + pointsAwarded,
+                totalEarned = current.totalEarned + pointsAwarded,
                 currentCycleQuizzes = 0 // Reset cycle strictly to 0
             )
         }
@@ -533,120 +541,88 @@ object AdsPayRepository {
 
         recordTransaction(
             userId = user.id,
-            points = rewardPoints,
+            points = pointsAwarded,
             type = TransactionType.REWARD_CYCLE,
             title = "Rewarded Ad Completed",
             description = "Successfully watched Start.io Rewarded Video Ad after $requiredCount valid quizzes"
         )
 
-        // Process referral commission (10% default)
-        user.referredBy?.let { refCode ->
-            val referrer = _userList.value.find { it.referralCode == refCode }
-            if (referrer != null && !referrer.isReferralDisabled && _appSettings.value.isReferralEnabled) {
-                val commission = rewardPoints * (_appSettings.value.referralCommissionPercent / 100.0)
-                if (commission > 0) {
-                    _userList.update { list ->
-                        list.map { u ->
-                            if (u.id == referrer.id) {
-                                u.copy(
-                                    points = u.points + commission,
-                                    totalEarned = u.totalEarned + commission
-                                )
-                            } else u
-                        }
-                    }
-                    persistData()
-
-                    recordTransaction(
-                        userId = referrer.id,
-                        points = commission,
-                        type = TransactionType.REFERRAL_BONUS,
-                        title = "Referral Commission",
-                        description = "10% commission from referral ${user.name}'s rewarded ad completion"
-                    )
-                }
-            }
-        }
-
-        return Result.success(rewardPoints)
+        return@withContext Result.success(pointsAwarded)
     }
 
     // --- Withdrawals ---
-    fun requestWithdrawal(
+    suspend fun requestWithdrawal(
         method: WithdrawMethod,
         points: Double,
         accountInfo: String,
         accountHolderName: String
-    ): Result<WithdrawalRequest> {
+    ): Result<WithdrawalRequest> = withContext(Dispatchers.IO) {
         // Enforce Internet check
         if (!NetworkUtils.isInternetAvailable(appContext)) {
-            return Result.failure(Exception(NetworkUtils.ERROR_NO_INTERNET))
+            return@withContext Result.failure(Exception(NetworkUtils.ERROR_NO_INTERNET))
         }
 
-        val user = _currentUser.value ?: return Result.failure(Exception("User not authenticated."))
+        val user = _currentUser.value ?: return@withContext Result.failure(Exception("User not authenticated."))
         if (!_appSettings.value.isWithdrawEnabled) {
-            return Result.failure(Exception("Withdrawals are currently disabled by administration."))
+            return@withContext Result.failure(Exception("Withdrawals are currently disabled by administration."))
         }
         if (user.isBlocked || user.isWithdrawDisabled) {
-            return Result.failure(Exception("Withdrawal access is restricted for this account."))
+            return@withContext Result.failure(Exception("Withdrawal access is restricted for this account."))
         }
 
         when (method) {
-            WithdrawMethod.BKASH -> if (!_appSettings.value.isBkashEnabled) return Result.failure(Exception("bKash withdrawals are currently unavailable."))
-            WithdrawMethod.NAGAD -> if (!_appSettings.value.isNagadEnabled) return Result.failure(Exception("Nagad withdrawals are currently unavailable."))
-            WithdrawMethod.USDT_BEP20 -> if (!_appSettings.value.isUsdtEnabled) return Result.failure(Exception("USDT BEP20 withdrawals are currently unavailable."))
+            WithdrawMethod.BKASH -> if (!_appSettings.value.isBkashEnabled) return@withContext Result.failure(Exception("bKash withdrawals are currently unavailable."))
+            WithdrawMethod.NAGAD -> if (!_appSettings.value.isNagadEnabled) return@withContext Result.failure(Exception("Nagad withdrawals are currently unavailable."))
+            WithdrawMethod.USDT_BEP20 -> if (!_appSettings.value.isUsdtEnabled) return@withContext Result.failure(Exception("USDT BEP20 withdrawals are currently unavailable."))
         }
 
         val minPoints = _appSettings.value.minWithdrawalPoints
         if (points < minPoints) {
-            return Result.failure(Exception("Minimum withdrawal is $minPoints points."))
+            return@withContext Result.failure(Exception("Minimum withdrawal is $minPoints points."))
         }
         if (user.points < points) {
-            return Result.failure(Exception("Insufficient point balance. You have ${user.points} points."))
+            return@withContext Result.failure(Exception("Insufficient point balance. You have ${user.points} points."))
         }
         if (accountInfo.trim().length < 6) {
-            return Result.failure(Exception("Please enter a valid account number / wallet address."))
+            return@withContext Result.failure(Exception("Please enter a valid account number / wallet address."))
         }
 
-        val currencyAmount = points * _appSettings.value.pointMonetaryValue
+        // Call Server API to create withdrawal request in central database
+        val serverRes = AdsPayApiClient.submitWithdrawal(
+            userId = user.id,
+            method = method,
+            points = points,
+            accountInfo = accountInfo,
+            accountHolderName = accountHolderName
+        )
 
-        // Atomic deduction
+        if (serverRes.isFailure) {
+            return@withContext Result.failure(serverRes.exceptionOrNull() ?: Exception("Withdrawal request failed on server"))
+        }
+
+        val request = serverRes.getOrThrow()
+
+        // Atomic local deduction to immediately reflect in UI
         _currentUser.update { current ->
             current?.copy(
-                points = current.points - points,
+                points = (current.points - points).coerceAtLeast(0.0),
                 totalWithdrawn = current.totalWithdrawn + points
             )
         }
         updateUserInList(_currentUser.value)
-        persistData()
-
-        val request = WithdrawalRequest(
-            id = "WTH-" + UUID.randomUUID().toString().take(8).uppercase(),
-            userId = user.id,
-            userName = user.name,
-            userEmail = user.email,
-            points = points,
-            amountCurrency = currencyAmount,
-            currencySymbol = _appSettings.value.currencySymbol,
-            method = method,
-            accountInfo = accountInfo.trim(),
-            accountHolderName = accountHolderName.trim(),
-            status = WithdrawalStatus.PENDING,
-            requestDate = System.currentTimeMillis()
-        )
-
         _withdrawals.update { listOf(request) + it }
+        persistData()
 
         recordTransaction(
             userId = user.id,
             points = -points,
             type = TransactionType.WITHDRAWAL_DEDUCT,
             title = "Withdrawal Requested (${method.name})",
-            description = "Cash out request of $points points ($currencyAmount ${_appSettings.value.currencySymbol}) to $accountInfo",
+            description = "Cash out request of $points points (${request.amountCurrency} ${_appSettings.value.currencySymbol}) to $accountInfo",
             referenceId = request.id
         )
 
-        return Result.success(request)
+        return@withContext Result.success(request)
     }
 
     // --- Admin Operations ---

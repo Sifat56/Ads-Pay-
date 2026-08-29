@@ -66,6 +66,7 @@ fun StartTaskScreen(
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var isErrorMessage by remember { mutableStateOf(false) }
     var isShowingAdDialog by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
 
     // Proactively pre-load Rewarded Ad when user is on task screen
     LaunchedEffect(user.currentCycleQuizzes) {
@@ -93,12 +94,14 @@ fun StartTaskScreen(
                 return
             }
 
-            val attemptRes = AdsPayRepository.startTaskAttempt(currentQuiz.id)
-            attemptRes.onSuccess {
-                currentAttemptId = it.id
-            }.onFailure {
-                statusMessage = it.message
-                isErrorMessage = true
+            coroutineScope.launch {
+                val attemptRes = AdsPayRepository.startTaskAttempt(currentQuiz.id)
+                attemptRes.onSuccess {
+                    currentAttemptId = it.id
+                }.onFailure {
+                    statusMessage = it.message
+                    isErrorMessage = true
+                }
             }
         }
     }
@@ -132,12 +135,14 @@ fun StartTaskScreen(
 
         if (!appSettings.isRewardedAdsEnabled) {
             // Admin fallback if video ads are disabled
-            val res = AdsPayRepository.verifyAndClaimRewardedAd()
-            res.onSuccess {
-                rewardCelebrationPoints = it
-            }.onFailure {
-                statusMessage = it.message
-                isErrorMessage = true
+            coroutineScope.launch {
+                val res = AdsPayRepository.verifyAndClaimRewardedAd()
+                res.onSuccess {
+                    rewardCelebrationPoints = it
+                }.onFailure {
+                    statusMessage = it.message
+                    isErrorMessage = true
+                }
             }
             return
         }
@@ -155,15 +160,17 @@ fun StartTaskScreen(
             activity = activity,
             onVideoCompleted = {
                 // Strictly verified Start.io completion callback -> Add points and reset cycle to 0/5
-                val res = AdsPayRepository.verifyAndClaimRewardedAd()
-                res.onSuccess { points ->
-                    rewardCelebrationPoints = points
-                    isShowingAdDialog = false
-                    currentQuizIndex = 0
-                }.onFailure { err ->
-                    statusMessage = err.message
-                    isErrorMessage = true
-                    isShowingAdDialog = false
+                coroutineScope.launch {
+                    val res = AdsPayRepository.verifyAndClaimRewardedAd()
+                    res.onSuccess { points ->
+                        rewardCelebrationPoints = points
+                        isShowingAdDialog = false
+                        currentQuizIndex = 0
+                    }.onFailure { err ->
+                        statusMessage = err.message
+                        isErrorMessage = true
+                        isShowingAdDialog = false
+                    }
                 }
             },
             onAdClosedWithoutCompletion = {
@@ -572,20 +579,22 @@ fun StartTaskScreen(
                                             return@Button
                                         }
 
-                                        val completeRes = AdsPayRepository.completeQuiz(attemptId, selectedOptionIndex)
-                                        completeRes.onSuccess { result ->
-                                            isAnswerSubmitted = true
-                                            isOptionCorrect = result.isCorrect
-                                            if (result.isCorrect) {
-                                                statusMessage = "Correct! (${result.currentCycleProgress}/$requiredCycleCount quizzes completed in this cycle)."
-                                                isErrorMessage = false
-                                            } else {
-                                                statusMessage = "Incorrect. The right option was ${('A' + result.correctIndex)}. (${result.currentCycleProgress}/$requiredCycleCount completed)."
+                                        coroutineScope.launch {
+                                            val completeRes = AdsPayRepository.completeQuiz(attemptId, selectedOptionIndex)
+                                            completeRes.onSuccess { result ->
+                                                isAnswerSubmitted = true
+                                                isOptionCorrect = result.isCorrect
+                                                if (result.isCorrect) {
+                                                    statusMessage = "Correct! (${result.currentCycleProgress}/$requiredCycleCount quizzes completed in this cycle)."
+                                                    isErrorMessage = false
+                                                } else {
+                                                    statusMessage = "Incorrect. The right option was ${('A' + result.correctIndex)}. (${result.currentCycleProgress}/$requiredCycleCount completed)."
+                                                    isErrorMessage = true
+                                                }
+                                            }.onFailure { err ->
+                                                statusMessage = err.message
                                                 isErrorMessage = true
                                             }
-                                        }.onFailure { err ->
-                                            statusMessage = err.message
-                                            isErrorMessage = true
                                         }
                                     },
                                     enabled = selectedOptionIndex != -1 && isTimerFinished,

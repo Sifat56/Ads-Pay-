@@ -49,6 +49,8 @@ fun WithdrawScreen(
 
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var successMessage by remember { mutableStateOf<String?>(null) }
+    var isSubmitting by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
     var selectedTab by remember { mutableIntStateOf(0) } // 0 = Cashout Form, 1 = History
 
     val enteredPoints = pointsInput.toDoubleOrNull() ?: 0.0
@@ -275,29 +277,42 @@ fun WithdrawScreen(
                                     return@Button
                                 }
 
-                                val res = AdsPayRepository.requestWithdrawal(
-                                    method = selectedMethod,
-                                    points = enteredPoints,
-                                    accountInfo = accountInfo,
-                                    accountHolderName = accountHolderName
-                                )
-                                res.onSuccess {
-                                    successMessage = "Cash out request of ${it.points} points submitted successfully! It will be reviewed by admin."
-                                    accountInfo = ""
-                                    selectedTab = 1
-                                }.onFailure {
-                                    errorMessage = it.message
+                                coroutineScope.launch {
+                                    isSubmitting = true
+                                    val res = AdsPayRepository.requestWithdrawal(
+                                        method = selectedMethod,
+                                        points = enteredPoints,
+                                        accountInfo = accountInfo,
+                                        accountHolderName = accountHolderName
+                                    )
+                                    isSubmitting = false
+                                    res.onSuccess {
+                                        successMessage = "Cash out request of ${it.points} points submitted successfully! It will be reviewed by admin."
+                                        accountInfo = ""
+                                        selectedTab = 1
+                                    }.onFailure {
+                                        errorMessage = it.message
+                                    }
                                 }
                             },
+                            enabled = !isSubmitting,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(50.dp),
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = GreenSuccess)
                         ) {
-                            Icon(Icons.Default.Payment, null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Confirm & Request Cash Out", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            if (isSubmitting) {
+                                CircularProgressIndicator(
+                                    color = SurfaceWhite,
+                                    modifier = Modifier.size(22.dp),
+                                    strokeWidth = 2.5.dp
+                                )
+                            } else {
+                                Icon(Icons.Default.Payment, null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Confirm & Request Cash Out", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            }
                         }
                     }
                 }

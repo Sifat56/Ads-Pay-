@@ -47,6 +47,8 @@ fun AuthScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var successMessage by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
 
     val appSettings by AdsPayRepository.appSettings.collectAsState()
 
@@ -332,43 +334,60 @@ fun AuthScreen(
                                     errorMessage = "Please complete all fields (password min 6 chars)."
                                     return@Button
                                 }
-                                val res = AdsPayRepository.register(
-                                    name = name,
-                                    email = emailOrPhone,
-                                    phone = phone,
-                                    password = password,
-                                    referralCode = referralCode.ifBlank { null }
-                                )
-                                res.onSuccess {
-                                    onAuthSuccess(it)
-                                }.onFailure {
-                                    errorMessage = it.message
+                                coroutineScope.launch {
+                                    isLoading = true
+                                    val res = AdsPayRepository.register(
+                                        name = name,
+                                        email = emailOrPhone,
+                                        phone = phone,
+                                        password = password,
+                                        referralCode = referralCode.ifBlank { null }
+                                    )
+                                    isLoading = false
+                                    res.onSuccess {
+                                        onAuthSuccess(it)
+                                    }.onFailure {
+                                        errorMessage = it.message
+                                    }
                                 }
                             } else {
                                 if (emailOrPhone.isBlank() || password.isBlank()) {
                                     errorMessage = "Please enter email/phone and password."
                                     return@Button
                                 }
-                                val res = AdsPayRepository.login(emailOrPhone, password)
-                                res.onSuccess {
-                                    onAuthSuccess(it)
-                                }.onFailure {
-                                    errorMessage = it.message
+                                coroutineScope.launch {
+                                    isLoading = true
+                                    val res = AdsPayRepository.login(emailOrPhone, password)
+                                    isLoading = false
+                                    res.onSuccess {
+                                        onAuthSuccess(it)
+                                    }.onFailure {
+                                        errorMessage = it.message
+                                    }
                                 }
                             }
                         },
+                        enabled = !isLoading,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(50.dp),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = PurplePrimary)
                     ) {
-                        Text(
-                            text = if (isSignUp) "Create Account" else "Login to Ads Pay",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            color = SurfaceWhite
-                        )
+                        if (isLoading) {
+                            CircularProgressIndicator(
+                                color = SurfaceWhite,
+                                modifier = Modifier.size(22.dp),
+                                strokeWidth = 2.5.dp
+                            )
+                        } else {
+                            Text(
+                                text = if (isSignUp) "Create Account" else "Login to Ads Pay",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                color = SurfaceWhite
+                            )
+                        }
                     }
                 }
             }
