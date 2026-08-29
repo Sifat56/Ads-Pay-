@@ -406,7 +406,7 @@ object AdsPayApiClient {
                 else if (obj.has("message")) obj.getString("message")
                 else defaultMsg
             } else if (trimmed.startsWith("<") || trimmed.contains("<!doctype", ignoreCase = true) || trimmed.contains("<html", ignoreCase = true)) {
-                "Backend server returned an HTML error page instead of JSON. Please verify backend server route and availability."
+                "Unable to connect to live API (Server returned HTML / Cookie check). Please ensure the app is Published/Shared in AI Studio, or update Server URL via the Cloud icon."
             } else {
                 if (trimmed.isNotBlank() && trimmed.length < 150) trimmed else defaultMsg
             }

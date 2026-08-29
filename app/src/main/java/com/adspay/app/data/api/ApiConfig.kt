@@ -9,7 +9,7 @@ object ApiConfig {
      * To point to a custom domain or VPS, simply update this URL.
      * Example: "https://your-production-server.com" or "https://api.adspay.app"
      */
-    const val DEFAULT_BASE_URL: String = "https://ais-dev-e5y5vcfysqgthqigmaqghs-275933888173.asia-southeast1.run.app"
+    const val DEFAULT_BASE_URL: String = "https://ais-pre-e5y5vcfysqgthqigmaqghs-275933888173.asia-southeast1.run.app"
     private const val PREF_KEY_SERVER_URL = "custom_server_base_url"
 
     var currentBaseUrl: String = DEFAULT_BASE_URL
